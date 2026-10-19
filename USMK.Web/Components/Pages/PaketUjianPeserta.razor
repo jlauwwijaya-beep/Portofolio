@@ -1,0 +1,324 @@
+@page "/paket-ujian/{Id:int}/peserta"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Peserta Ujian · USMK</PageTitle>
+
+@if (memuat)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="skeleton-stack">
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:60px"></div>
+        </div>
+    </div>
+}
+else if (data is null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @(error ?? "Paket ujian tidak ditemukan.")
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <a class="muted-sm" href="@($"paket-ujian/{Id}")">← Kembali ke penyusun</a>
+            <h1 class="mt-1">Peserta Ujian</h1>
+            <p class="text-muted">
+                <span class="cell-strong">@data.Paket.Judul</span>
+                @if (!string.IsNullOrWhiteSpace(data.Paket.MataPelajaran))
+                {
+                    <span class="badge badge-biru">@data.Paket.MataPelajaran</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(data.Paket.Kelas))
+                {
+                    <span class="badge badge-ungu">@data.Paket.Kelas</span>
+                }
+            </p>
+        </div>
+        <div class="btn-row">
+            @if (data.Pengerjaan.Any(p => p.BelumDitutup))
+            {
+                <button class="btn btn-quiet" disabled="@sedangTutup" @onclick="TutupKedaluwarsaAsync">
+                    @(sedangTutup ? "Menutup..." : "Tutup yang Kedaluwarsa")
+                </button>
+            }
+            <span class="badge badge-biru">@data.JumlahPengerjaan pengerjaan</span>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <a class="tab" href="@($"paket-ujian/{Id}")">Susun Soal</a>
+        <a class="tab" href="@($"paket-ujian/{Id}/ubah")">Info &amp; Jadwal</a>
+        <a class="tab tab-aktif" href="@($"paket-ujian/{Id}/peserta")">Peserta</a>
+    </div>
+
+    @if (pesan is not null)
+    {
+        <div class="alert alert-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            @pesan
+        </div>
+    }
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @error
+        </div>
+    }
+
+    @if (data.Pengerjaan.Count > 0)
+    {
+        <div class="stat-grid">
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-hijau)">✓</span>
+                <div>
+                    <span class="stat-label">Sudah dinilai</span>
+                    <span class="stat-value">@data.JumlahDinilai</span>
+                </div>
+            </div>
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-ungu)">~</span>
+                <div>
+                    <span class="stat-label">Rata-rata skor</span>
+                    <span class="stat-value">@(data.RataRata?.ToString("0.0") ?? "—")</span>
+                </div>
+            </div>
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-biru)">±</span>
+                <div>
+                    <span class="stat-label">Tertinggi / terendah</span>
+                    <span class="stat-value">@(data.Tertinggi?.ToString("0.0") ?? "—") / @(data.Terendah?.ToString("0.0") ?? "—")</span>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (data.Pengerjaan.Count == 0)
+    {
+        <div class="card">
+            <div class="empty">
+                <span class="icon-bubble icon-bubble-lg icon-bubble-ungu">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                    </svg>
+                </span>
+                <h3>Belum ada yang mengerjakan</h3>
+                <p>Setelah siswa mulai mengerjakan paket ujian ini, daftarnya akan muncul di sini.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:44px">No</th>
+                            <th>Nama Siswa</th>
+                            <th style="width:110px">Kelas</th>
+                            <th style="width:90px">Dijawab</th>
+                            <th style="width:140px">Status</th>
+                            <th style="width:80px">Skor</th>
+                            <th style="width:170px">Mulai</th>
+                            <th class="actions" style="width:150px">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ var no = 0; }
+                        @foreach (var p in DaftarPerHal)
+                        {
+                            no++;
+                            <tr>
+                                <td class="num">@no</td>
+                                <td class="grow">
+                                    <span class="cell-strong">@(string.IsNullOrWhiteSpace(p.NamaSiswa) ? "(tanpa nama)" : p.NamaSiswa)</span>
+                                    <span class="cell-sub">@p.UserId</span>
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(p.Kelas) ? "—" : p.Kelas)</td>
+                                <td class="num">@p.JumlahDijawab</td>
+                                <td>
+                                    @if (p.Status == "Selesai")
+                                    {
+                                        <span class="badge badge-hijau"><span class="dot-status"></span> Selesai</span>
+                                    }
+                                    else if (p.Status == "WaktuHabis")
+                                    {
+                                        <span class="badge badge-merah">Waktu habis</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-kuning">Sedang mengerjakan</span>
+                                    }
+                                </td>
+                                <td class="num">@(p.Skor?.ToString("0.0") ?? "—")</td>
+                                <td class="muted-sm">@p.WaktuMulai.ToString("dd MMM yyyy HH:mm")</td>
+                                <td class="actions">
+                                    @if (p.Status is "Selesai" or "WaktuHabis")
+                                    {
+                                        <a class="btn btn-primary btn-sm" href="@($"kerjakan-ujian/{p.PengerjaanId}/preview")">Lihat</a>
+                                        <a class="btn btn-ghost btn-sm" href="@($"koreksi/{p.PengerjaanId}")">Koreksi</a>
+                                    }
+                                    else
+                                    {
+                                        <a class="btn btn-ghost btn-sm" href="@($"kerjakan-ujian/{p.PengerjaanId}")">Lanjut</a>
+                                    }
+                                    @if (konfirmasiHapus == p.PengerjaanId)
+                                    {
+                                        <span class="muted-sm">Yakin hapus?</span>
+                                        <button class="btn btn-danger btn-sm" disabled="@(menghapus.Contains(p.PengerjaanId))" @onclick="() => ResetAsync(p.PengerjaanId)">
+                                            @(menghapus.Contains(p.PengerjaanId) ? "Hapus..." : "Ya, hapus")
+                                        </button>
+                                        <button class="btn btn-ghost btn-sm" @onclick="() => konfirmasiHapus = null">Batal</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-danger btn-sm" @onclick="() => KonfirmasiReset(p.PengerjaanId)">Reset</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (JumlahHalPeserta > 1)
+                {
+                    <div class="paginasi">
+                        <button class="btn btn-quiet btn-sm" disabled="@(halaman <= 1)" @onclick="() => halaman--">←</button>
+                        @for (var h = 1; h <= JumlahHalPeserta; h++)
+                        {
+                            var hh = h;
+                            <button class='filter-chip @(hh == halaman ? "on" : "")' @onclick="() => halaman = hh">@hh</button>
+                        }
+                        <button class="btn btn-quiet btn-sm" disabled="@(halaman >= JumlahHalPeserta)" @onclick="() => halaman++">→</button>
+                    </div>
+                }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private PesertaPaketResponseDto? data;
+    private bool memuat = true;
+    private bool sedangTutup;
+    private string? error;
+    private string? pesan;
+    private int? konfirmasiHapus;
+    private readonly HashSet<int> menghapus = new();
+
+    private int halaman = 1;
+    private const int UkuranHalaman = 10;
+
+    private int JumlahHalPeserta => Math.Max(1, ((data?.Pengerjaan.Count ?? 0) + UkuranHalaman - 1) / UkuranHalaman);
+
+    private int HalTerkini => Math.Clamp(halaman, 1, JumlahHalPeserta);
+
+    private List<PesertaPengerjaanDto> DaftarPerHal =>
+        (data?.Pengerjaan ?? new())
+            .Skip((HalTerkini - 1) * UkuranHalaman)
+            .Take(UkuranHalaman)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        pesan = UrlQuery.Baca(Nav.Uri, "pesan");
+        await MuatAsync();
+    }
+
+    private async Task MuatAsync()
+    {
+        memuat = true;
+        var hasil = await Api.AmbilPesertaPaketAsync(Id);
+        memuat = false;
+
+        if (hasil.Berhasil)
+        {
+            data = hasil.Data;
+            halaman = 1;
+            error = null;
+        }
+        else
+        {
+            data = null;
+            error = hasil.Error;
+        }
+    }
+
+    private void KonfirmasiReset(int pengerjaanId) => konfirmasiHapus = pengerjaanId;
+
+    private async Task ResetAsync(int pengerjaanId)
+    {
+        if (menghapus.Contains(pengerjaanId))
+            return;
+
+        menghapus.Add(pengerjaanId);
+        error = null;
+        pesan = null;
+
+        var hasil = await Api.HapusPengerjaanAsync(pengerjaanId);
+        menghapus.Remove(pengerjaanId);
+        konfirmasiHapus = null;
+
+        if (hasil.Berhasil)
+        {
+            pesan = "Riwayat pengerjaan dihapus. Siswa bisa mengerjakan ulang.";
+            await MuatAsync();
+        }
+        else
+        {
+            error = hasil.Error;
+        }
+    }
+
+    private async Task TutupKedaluwarsaAsync()
+    {
+        if (sedangTutup || data is null)
+            return;
+
+        var ids = data.Pengerjaan.Where(p => p.BelumDitutup).Select(p => p.PengerjaanId).ToList();
+
+        if (ids.Count == 0)
+            return;
+
+        sedangTutup = true;
+        error = null;
+        pesan = null;
+
+        var hasil = await Api.TutupKedaluwarsaPaketAsync(Id, new TutupKedaluwarsaRequest(ids));
+        sedangTutup = false;
+
+        if (hasil.Berhasil)
+        {
+            pesan = $"{ids.Count} pengerjaan kedaluwarsa telah ditutup dan dinilai otomatis.";
+            await MuatAsync();
+        }
+        else
+        {
+            error = hasil.Error;
+        }
+    }
+}

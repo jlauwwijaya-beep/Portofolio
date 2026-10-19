@@ -1,0 +1,339 @@
+@page "/paket-ujian/baru"
+@page "/paket-ujian/{Id:int}/ubah"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+
+<PageTitle>@(ModeUbah ? "Ubah Paket Ujian" : "Buat Paket Ujian") · USMK</PageTitle>
+
+<div class="page-header">
+    <div>
+        <a class="muted-sm" href="@(ModeUbah ? $"paket-ujian/{Id}" : "paket-ujian")">
+            ← Kembali ke @(ModeUbah ? "halaman paket" : "daftar paket ujian")
+        </a>
+        <h1 class="mt-1">@(ModeUbah ? "Ubah Paket Ujian" : "Buat Paket Ujian")</h1>
+        <p class="text-muted">
+            @(ModeUbah
+                ? "Perbarui informasi paket ujian. Bagian dan soal tetap seperti semula."
+                : "Isi informasi dasar paket ujian dulu, lalu kamu masuk ke penyusun untuk menambah bagian dan soal.")
+        </p>
+    </div>
+</div>
+
+@if (ModeUbah)
+{
+    <div class="tabs">
+        <a class="tab" href="@($"paket-ujian/{Id}")">Susun Soal</a>
+        <a class="tab tab-aktif" href="@($"paket-ujian/{Id}/ubah")">Info &amp; Jadwal</a>
+        <a class="tab" href="@($"paket-ujian/{Id}/peserta")">Peserta</a>
+    </div>
+}
+
+@if (loadError is not null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @loadError
+    </div>
+}
+else if (memuat)
+{
+    <div class="card card-narrow">
+        <div class="skeleton-stack">
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:90px"></div>
+            <div class="skeleton" style="height:60px"></div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body-pad">
+            <EditForm Model="model" OnValidSubmit="SimpanAsync">
+                <DataAnnotationsValidator />
+
+                <div class="field">
+                    <label class="label" for="judul">Judul paket ujian</label>
+                    <InputText id="judul" class="input" @bind-Value="model.Judul"
+                               placeholder="Contoh: Ujian Tengah Semester Ganjil" />
+                    <ValidationMessage For="@(() => model.Judul)" />
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label class="label" for="mapel">Mata pelajaran <span class="text-muted">(opsional)</span></label>
+                        <InputText id="mapel" class="input" @bind-Value="model.MataPelajaran"
+                                   placeholder="Contoh: Matematika" />
+                    </div>
+                    <div class="field">
+                        <label class="label" for="kelas">Kelas <span class="text-muted">(opsional)</span></label>
+                        <InputText id="kelas" class="input" @bind-Value="model.Kelas"
+                                   placeholder="Contoh: XII RPL 1" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="deskripsi">Deskripsi / petunjuk <span class="text-muted">(opsional)</span></label>
+                    <InputTextArea id="deskripsi" class="input" rows="3" @bind-Value="model.Deskripsi"
+                                   placeholder="Petunjuk singkat untuk siswa..." />
+                </div>
+
+                <hr class="divider" />
+
+                <div class="section-title">
+                    <div>
+                        <h3>Jadwal &amp; durasi</h3>
+                        <p>Atur waktu pengerjaan dan kapan paket bisa dibuka siswa.</p>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label class="label" for="durasi">Durasi pengerjaan <span class="text-muted">(menit)</span></label>
+                        <InputNumber id="durasi" class="input" style="max-width:200px" @bind-Value="model.DurasiMenit" />
+                        <p class="hint">Isi 0 untuk tanpa batas waktu (peserta hanya dibatasi jadwal tutup).</p>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="acak">Urutan soal</label>
+                        <label class="check">
+                            <input id="acak" type="checkbox" @bind="model.AcakUrutan" />
+                            <span>Acak urutan soal untuk tiap peserta</span>
+                        </label>
+                        <p class="hint">Kalau tidak dicentang, semua peserta melihat urutan yang sama.</p>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="flex-between" style="margin-bottom:8px">
+                        <label class="label" style="margin:0">Jadwal buka / tutup</label>
+                        <span class="badge @(model.PakaiJadwal ? "badge-biru" : "badge-kuning")">@(model.PakaiJadwal ? "Dijadwalkan" : "Selalu terbuka")</span>
+                    </div>
+
+                    @if (model.PakaiJadwal)
+                    {
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="label" for="waktu-buka">Dibuka dari</label>
+                                <input id="waktu-buka" class="input" type="datetime-local"
+                                       value="@FormatLocal(model.WaktuBuka)"
+                                       @onchange="e => SetBuka(e.Value?.ToString())" />
+                            </div>
+                            <div class="field">
+                                <label class="label" for="waktu-tutup">Ditutup pada</label>
+                                <input id="waktu-tutup" class="input" type="datetime-local"
+                                       value="@FormatLocal(model.WaktuTutup)"
+                                       @onchange="e => SetTutup(e.Value?.ToString())" />
+                            </div>
+                        </div>
+                        <p class="hint">
+                            Tanpa jadwal, peserta bisa mulai kapan saja. Saat pas dibuka, siswa otomatis bisa
+                            mengerjakan; pas ditutup, pengerjaan yang berjalan dikumpulkan otomatis.
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="hint" style="margin-top:2px">
+                            Paket ini selalu terbuka selama masih berstatus aktif.
+                        </p>
+                    }
+
+                    <button type="button" class="btn btn-ghost btn-sm" @onclick="BalikJadwal">
+                        @(model.PakaiJadwal ? "Pakai tanpa jadwal" : "Gunakan jadwal buka/tutup")
+                    </button>
+                </div>
+
+                @if (error is not null)
+                {
+                    <div class="alert alert-danger">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 8v5M12 16h.01" />
+                        </svg>
+                        @error
+                    </div>
+                }
+
+                <hr class="divider" />
+
+                <div class="btn-row">
+                    <button type="submit" class="btn btn-primary" disabled="@sedangMenyimpan">
+                        @(sedangMenyimpan ? "Menyimpan..." : ModeUbah ? "Simpan Perubahan" : "Simpan & Susun Soal")
+                    </button>
+                    <a class="btn btn-ghost" href="@(ModeUbah ? $"paket-ujian/{Id}" : "paket-ujian")">Batal</a>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private readonly PaketForm model = new();
+    private bool memuat;
+    private bool sedangMenyimpan;
+    private string? loadError;
+    private string? error;
+
+    private bool ModeUbah => Id > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id == 0)
+            return;
+
+        memuat = true;
+        var hasil = await Api.AmbilPaketAsync(Id);
+        memuat = false;
+
+        if (!hasil.Berhasil || hasil.Data is null)
+        {
+            loadError = hasil.Error ?? "Paket ujian tidak ditemukan.";
+            return;
+        }
+
+        var p = hasil.Data;
+        model.Judul = p.Judul;
+        model.Deskripsi = p.Deskripsi;
+        model.MataPelajaran = p.MataPelajaran;
+        model.Kelas = p.Kelas;
+        model.DurasiMenit = Math.Max(0, p.DurasiMenit);
+        model.AcakUrutan = p.AcakUrutan;
+
+        var punyaJadwal = !(p.WaktuTutup == default
+            || p.WaktuBuka == new DateTime(2000, 1, 1) && p.WaktuTutup == new DateTime(2100, 1, 1));
+
+        if (punyaJadwal)
+        {
+            model.PakaiJadwal = true;
+            model.WaktuBuka = p.WaktuBuka;
+            model.WaktuTutup = p.WaktuTutup;
+        }
+    }
+
+    private void BalikJadwal()
+    {
+        model.PakaiJadwal = !model.PakaiJadwal;
+
+        if (!model.PakaiJadwal)
+        {
+            model.WaktuBuka = null;
+            model.WaktuTutup = null;
+        }
+
+        error = null;
+    }
+
+    private void SetBuka(string? teks)
+    {
+        model.WaktuBuka = DateTime.TryParse(teks, out var t) ? t : null;
+        error = null;
+    }
+
+    private void SetTutup(string? teks)
+    {
+        model.WaktuTutup = DateTime.TryParse(teks, out var t) ? t : null;
+        error = null;
+    }
+
+    private static string? FormatLocal(DateTime? t) =>
+        t is null ? null : t.Value.ToString("yyyy-MM-ddTHH:mm");
+
+    private async Task SimpanAsync()
+    {
+        if (sedangMenyimpan)
+            return;
+
+        error = null;
+
+        DateTime? buka = model.WaktuBuka;
+        DateTime? tutup = model.WaktuTutup;
+
+        if (model.PakaiJadwal)
+        {
+            if (tutup is null)
+            {
+                error = "Jadwal tutup wajib diisi.";
+                return;
+            }
+
+            buka ??= DateTime.Now;
+
+            if (tutup <= buka)
+            {
+                error = "Jadwal tutup harus lebih lambat dari jadwal buka.";
+                return;
+            }
+        }
+
+        sedangMenyimpan = true;
+
+        var payload = new PaketUjianUpsertRequest(
+            model.Judul.Trim(),
+            Bersih(model.Deskripsi),
+            Bersih(model.MataPelajaran),
+            Bersih(model.Kelas),
+            Math.Max(0, model.DurasiMenit),
+            model.PakaiJadwal ? buka!.Value : default,
+            model.PakaiJadwal ? tutup!.Value : default,
+            model.AcakUrutan);
+
+        if (ModeUbah)
+        {
+            var hasilUbah = await Api.UbahPaketAsync(Id, payload);
+            sedangMenyimpan = false;
+
+            if (hasilUbah.Berhasil)
+                Nav.NavigateTo($"paket-ujian/{Id}?pesan=" + Uri.EscapeDataString("Paket ujian berhasil diperbarui."));
+            else
+                error = hasilUbah.Error;
+
+            return;
+        }
+
+        var hasil = await Api.BuatPaketAsync(payload);
+        sedangMenyimpan = false;
+
+        if (hasil.Berhasil)
+            Nav.NavigateTo(hasil.Data is { Id: > 0 } paket ? $"paket-ujian/{paket.Id}" : "paket-ujian");
+        else
+            error = hasil.Error;
+    }
+
+    private static string? Bersih(string? teks) => string.IsNullOrWhiteSpace(teks) ? null : teks.Trim();
+
+    private sealed class PaketForm
+    {
+        [Required(ErrorMessage = "Judul paket ujian wajib diisi")]
+        [StringLength(200, ErrorMessage = "Judul terlalu panjang")]
+        public string Judul { get; set; } = "";
+
+        [StringLength(1000, ErrorMessage = "Deskripsi terlalu panjang")]
+        public string? Deskripsi { get; set; }
+
+        [StringLength(120, ErrorMessage = "Mata pelajaran terlalu panjang")]
+        public string? MataPelajaran { get; set; }
+
+        [StringLength(60, ErrorMessage = "Kelas terlalu panjang")]
+        public string? Kelas { get; set; }
+
+        [Range(0, 600, ErrorMessage = "Durasi antara 0 sampai 600 menit")]
+        public int DurasiMenit { get; set; }
+
+        public bool AcakUrutan { get; set; } = true;
+
+        public bool PakaiJadwal { get; set; }
+
+        public DateTime? WaktuBuka { get; set; }
+
+        public DateTime? WaktuTutup { get; set; }
+    }
+}

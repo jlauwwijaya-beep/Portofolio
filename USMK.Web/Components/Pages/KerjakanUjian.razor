@@ -1,0 +1,393 @@
+@page "/kerjakan-ujian"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Kerjakan Ujian · USMK</PageTitle>
+
+<div class="page-header">
+    <div>
+        <span class="eyebrow">Untuk Peserta</span>
+        <h1>Kerjakan Ujian</h1>
+        <p class="text-muted">Pilih paket ujian yang sudah dibuka, lalu kerjakan semua bagian sampai selesai.</p>
+    </div>
+</div>
+
+@if (loadError is not null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @loadError
+    </div>
+}
+else if (memuat)
+{
+    <div class="card">
+        <div class="skeleton-stack">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="skeleton" style="height:74px"></div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @error
+        </div>
+    }
+
+    <div class="field userchip" style="width:max-content;margin-bottom:18px">
+        <span class="avatar">@Inisial</span>
+        <span>
+            <span class="userchip-name">@NamaSiswa</span>
+            <span class="userchip-role">@(string.IsNullOrWhiteSpace(Nis) ? Email : Nis)</span>
+        </span>
+    </div>
+
+    @if (blokiran is { Diblokir: true })
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+            <span>
+                <strong>Akun Anda diblokir.</strong>
+                Anda keluar dari ruang ujian @blokiran.JumlahKeluar kali, jadi tidak bisa mengikuti ujian
+                sampai pengelola mereset akun Anda.
+            </span>
+        </div>
+    }
+    else if (blokiran is { JumlahKeluar: > 0 })
+    {
+        <div class="alert alert-warning">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 9v4M12 17h.01" />
+                <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+            </svg>
+            <span>
+                Peringatan: Anda sudah keluar dari ruang ujian
+                <strong>@blokiran.JumlahKeluar dari @BatasKeluar kali</strong>.
+                Setelah @BatasKeluar kali, akun Anda akan diblokir.
+            </span>
+        </div>
+    }
+
+    <h2 style="margin-bottom:14px">Paket Ujian Tersedia</h2>
+
+    @if (tersedia.Count == 0)
+    {
+        <div class="card">
+            <div class="empty">
+                <span class="icon-bubble icon-bubble-lg">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="3" />
+                        <path d="M16 2v4M8 2v4M3 10h18" />
+                    </svg>
+                </span>
+                <h3>Belum ada paket ujian yang dibuka</h3>
+                <p>Paket ujian yang sudah dipublikasikan guru akan muncul di sini.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="grid-auto">
+            @foreach (var p in TersediaPerHal)
+            {
+                var id = p.Id;
+                <div class="card">
+                    <div class="card-body-pad">
+                        <h3 style="margin:0 0 6px">@p.Judul</h3>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                            @if (!string.IsNullOrWhiteSpace(p.MataPelajaran))
+                            {
+                                <span class="badge badge-biru">@p.MataPelajaran</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(p.Kelas))
+                            {
+                                <span class="badge badge-ungu">@p.Kelas</span>
+                            }
+                            <span class="badge badge-abu">@p.JumlahSoal soal</span>
+                            <span class="badge badge-abu">@p.JumlahBagian bagian</span>
+                            @if (p.DurasiMenit > 0)
+                            {
+                                <span class="badge badge-abu">@p.DurasiMenit menit</span>
+                            }
+                            @if (p.StatusJadwal == "BelumDibuka")
+                            {
+                                <span class="badge badge-kuning">Dibuka @p.WaktuBuka.ToString("dd MMM HH:mm")</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-hijau"><span class="dot-status"></span> Terbuka</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(p.Deskripsi))
+                        {
+                            <p class="text-muted" style="margin:0 0 14px">@p.Deskripsi</p>
+                        }
+                        <button class="btn btn-primary btn-block"
+                                disabled="@(sedangMulai || p.StatusJadwal != "Dibuka" || (blokiran?.Diblokir ?? false))"
+                                @onclick="() => MulaiAsync(id)">
+                            @(p.StatusJadwal == "Dibuka"
+                                ? sedangMulai ? "Menyiapkan..." : "Mulai / Lanjutkan"
+                                : "Belum dibuka")
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    @if (JumlahHalTersedia > 1)
+        {
+            <div class="paginasi">
+                <button class="btn btn-quiet btn-sm" disabled="@(halTersedia <= 1)" @onclick="() => halTersedia--">←</button>
+                @for (var h = 1; h <= JumlahHalTersedia; h++)
+                {
+                    var hh = h;
+                    <button class='filter-chip @(hh == halTersedia ? "on" : "")' @onclick="() => halTersedia = hh">@hh</button>
+                }
+                <button class="btn btn-quiet btn-sm" disabled="@(halTersedia >= JumlahHalTersedia)" @onclick="() => halTersedia++">→</button>
+            </div>
+        }
+    }
+
+    @if (riwayat.Count > 0)
+    {
+        <div class="card" style="margin-top:22px">
+            <div class="card-head">
+                <h2>Riwayat Pengerjaan Saya</h2>
+                <span class="badge badge-biru">@riwayat.Count catatan</span>
+            </div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Paket Ujian</th>
+                            <th style="width:170px">Mata Pelajaran</th>
+                            <th style="width:140px">Status</th>
+                            <th style="width:80px">Skor</th>
+                            <th style="width:170px">Mulai</th>
+                            <th class="actions" style="width:130px">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in RiwayatPerHal)
+                        {
+                            <tr>
+                                <td class="grow"><span class="cell-strong">@r.Judul</span></td>
+                                <td>@(string.IsNullOrWhiteSpace(r.MataPelajaran) ? "—" : r.MataPelajaran)</td>
+                                <td>
+                                    @if (r.Status == "Selesai")
+                                    {
+                                        <span class="badge badge-hijau"><span class="dot-status"></span> Selesai</span>
+                                    }
+                                    else if (r.Status == "WaktuHabis")
+                                    {
+                                        <span class="badge badge-merah">Waktu habis</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-kuning">Sedang mengerjakan</span>
+                                    }
+                                </td>
+                                <td class="num">@(r.Skor?.ToString("0.0") ?? "—")</td>
+                                <td class="muted-sm">@r.WaktuMulai.ToString("dd MMM yyyy HH:mm")</td>
+                                <td class="actions">
+                                    <a class="btn btn-ghost btn-sm" href="@(r.Status == "Selesai"
+                                            ? $"kerjakan-ujian/{r.PengerjaanId}/preview"
+                                            : $"kerjakan-ujian/{r.PengerjaanId}")">
+                                        @(r.Status == "Selesai" ? "Lihat" : "Lanjutkan")
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (JumlahHalRiwayat > 1)
+            {
+                <div class="paginasi">
+                    <button class="btn btn-quiet btn-sm" disabled="@(halRiwayat <= 1)" @onclick="() => halRiwayat--">←</button>
+                    @for (var h = 1; h <= JumlahHalRiwayat; h++)
+                    {
+                        var hh = h;
+                        <button class='filter-chip @(hh == halRiwayat ? "on" : "")' @onclick="() => halRiwayat = hh">@hh</button>
+                    }
+                    <button class="btn btn-quiet btn-sm" disabled="@(halRiwayat >= JumlahHalRiwayat)" @onclick="() => halRiwayat++">→</button>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private List<PaketUjianBankDto> tersedia = new();
+    private List<RiwayatPengerjaanDto> riwayat = new();
+    private BlokiranDto? blokiran;
+    private bool memuat = true;
+    private bool sedangMulai;
+    private string? loadError;
+    private string? error;
+
+    /// <summary>Batas keluar ruang ujian sebelum peserta diblokir — sama dengan aturan di API.</summary>
+    private const int BatasKeluar = 3;
+
+    private string UserId { get; set; } = "";
+    private string NamaSiswa { get; set; } = "Peserta";
+    private string Email { get; set; } = "";
+    private string? Nis { get; set; }
+    private string? Kelas { get; set; }
+
+    private int halTersedia = 1;
+    private int halRiwayat = 1;
+    private const int UkuranHalaman = 10;
+
+    private int JumlahHalTersedia => Math.Max(1, (tersedia.Count + UkuranHalaman - 1) / UkuranHalaman);
+
+    private int JumlahHalRiwayat => Math.Max(1, (riwayat.Count + UkuranHalaman - 1) / UkuranHalaman);
+
+    private List<PaketUjianBankDto> TersediaPerHal =>
+        tersedia.Skip((Math.Clamp(halTersedia, 1, JumlahHalTersedia) - 1) * UkuranHalaman)
+                .Take(UkuranHalaman)
+                .ToList();
+
+    private List<RiwayatPengerjaanDto> RiwayatPerHal =>
+        riwayat.Skip((Math.Clamp(halRiwayat, 1, JumlahHalRiwayat) - 1) * UkuranHalaman)
+               .Take(UkuranHalaman)
+               .ToList();
+
+    private string Inisial
+    {
+        get
+        {
+            var parts = NamaSiswa.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..1].ToUpperInvariant(),
+                _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
+            };
+        }
+    }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MuatIdentitas();
+        await MuatAsync();
+    }
+
+    private async Task MuatIdentitas()
+    {
+        if (AuthState is null)
+            return;
+
+        var user = (await AuthState).User;
+        UserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        NamaSiswa = user.FindFirst("nama_lengkap")?.Value ?? user.Identity?.Name ?? "Peserta";
+        Email = user.Identity?.Name ?? "";
+        Nis = user.FindFirst("nis")?.Value;
+        Kelas = user.FindFirst("kelas")?.Value;
+    }
+
+    private async Task MuatAsync()
+    {
+        memuat = true;
+
+        await MuatBlokiranAsync();
+
+        var hasil = await Api.AmbilDaftarPaketAsync();
+
+        if (!hasil.Berhasil)
+        {
+            memuat = false;
+            tersedia = new();
+            loadError = hasil.Error;
+            return;
+        }
+
+        tersedia = hasil.Data!
+            .Where(p => p.IsPublished && p.StatusJadwal is "Dibuka" or "BelumDibuka")
+            .OrderByDescending(p => p.Id)
+            .ToList();
+
+        var riwayatHasil = await Api.AmbilRiwayatKerjaAsync(UserId);
+        riwayat = riwayatHasil.Berhasil ? riwayatHasil.Data! : new List<RiwayatPengerjaanDto>();
+
+        halTersedia = 1;
+        halRiwayat = 1;
+
+        memuat = false;
+        loadError = null;
+    }
+
+    private async Task MuatBlokiranAsync()
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            blokiran = null;
+            return;
+        }
+
+        var hasil = await Api.AmbilBlokiranAsync(UserId);
+        blokiran = hasil.Berhasil ? hasil.Data : null;
+    }
+
+    private async Task MulaiAsync(int paketUjianId)
+    {
+        if (sedangMulai)
+            return;
+
+        sedangMulai = true;
+        error = null;
+
+        // Klik "Mulai" adalah gestur pengguna, jadi di sinilah kesempatan
+        // terbaik meminta layar penuh sebelum halaman ujian dibuka.
+        try { await JS.InvokeAsync<bool>("usmk.layar.minta"); } catch (JSException) { }
+
+        var hasil = await Api.MulaiKerjakanAsync(new MulaiKerjakanRequest(
+            paketUjianId,
+            UserId,
+            string.IsNullOrWhiteSpace(NamaSiswa) ? null : NamaSiswa,
+            string.IsNullOrWhiteSpace(Kelas) ? null : Kelas));
+
+        sedangMulai = false;
+
+        if (hasil.Berhasil)
+        {
+            Nav.NavigateTo($"kerjakan-ujian/{hasil.Data!.PengerjaanId}");
+            return;
+        }
+
+        // Mulai ditolak (sudah selesai, waktu habis, diblokir, dll):
+        // tutup layar penuh dulu supaya peserta tidak terkunci di halaman
+        // daftar dengan layar penuh yang tidak bisa diapa-apakan.
+        try { await JS.InvokeAsync<bool>("usmk.layar.keluar"); } catch (JSException) { }
+
+        error = hasil.Error;
+
+        // 403 = diblokir; ambil ulang status supaya banner di atas ikut berubah.
+        if (hasil.Adalah(HttpStatusCode.Forbidden))
+            await MuatBlokiranAsync();
+    }
+}

@@ -1,0 +1,450 @@
+@page "/rekap"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Rekap Hasil · USMK</PageTitle>
+
+<div class="page-header">
+    <div>
+        <span class="eyebrow">Laporan</span>
+        <h1>Rekap Hasil</h1>
+        <p class="text-muted">Pilih paket ujian untuk melihat nilai dan waktu pengerjaan setiap peserta.</p>
+    </div>
+</div>
+
+@if (loadError is not null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @loadError
+    </div>
+}
+else if (memuat)
+{
+    <div class="card">
+        <div class="skeleton-stack">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="skeleton" style="height:60px"></div>
+            }
+        </div>
+    </div>
+}
+else if (pakets.Count == 0)
+{
+    <div class="card">
+        <div class="empty">
+            <span class="icon-bubble icon-bubble-lg">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v18h18" />
+                    <path d="M7 15l4-5 3 3 5-7" />
+                </svg>
+            </span>
+            <h3>Belum ada paket ujian untuk direkap</h3>
+            <p>Buat dan publikasikan paket ujian dulu, nanti hasilnya muncul di sini.</p>
+            <a class="btn btn-primary" href="paket-ujian/baru">Buat paket ujian</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card" style="margin-bottom:18px">
+        <div class="table-tools">
+            <label class="label" for="pilih-paket" style="margin:0">Pilih paket ujian</label>
+            <select id="pilih-paket" class="input filter-cari" style="max-width:520px;min-height:38px;padding:8px 13px"
+                    value="@pilihId" @onchange="PilihPaketAsync">
+                <option value="">-- pilih paket ujian --</option>
+                @foreach (var p in pakets)
+                {
+                    <option value="@p.Id">@p.Judul (#@p.Id)</option>
+                }
+            </select>
+            <button class="btn btn-primary" disabled="@(pilihId is null || sedangEkspor)"
+                    @onclick="EksporAsync">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <path d="M7 10l5 5 5-5" />
+                    <path d="M12 15V3" />
+                </svg>
+                @(sedangEkspor ? "Menyiapkan..." : "Ekspor ke Excel")
+            </button>
+            <span class="hint" style="margin:0">Rekap nilai peserta tampil otomatis setelah dipilih.</span>
+        </div>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @error
+        </div>
+    }
+
+    @if (rekap is not null)
+    {
+        <div class="stat-grid" style="margin-bottom:18px">
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-biru)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M22 21v-2a4 4 0 00-3-3.87" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="stat-label">Pengerjaan</span>
+                    <span class="stat-value">@rekap.JumlahPengerjaan</span>
+                </span>
+            </div>
+
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-hijau)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="stat-label">Sudah dinilai</span>
+                    <span class="stat-value">@rekap.JumlahDinilai</span>
+                </span>
+            </div>
+
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-ungu)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20V10M18 20V4M6 20v-4" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="stat-label">Rata-rata</span>
+                    <span class="stat-value">@Format(rekap.RataRata)</span>
+                </span>
+            </div>
+
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-biru)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="stat-label">Tertinggi</span>
+                    <span class="stat-value">@Format(rekap.Tertinggi)</span>
+                </span>
+            </div>
+
+            <div class="stat">
+                <span class="stat-icon" style="background:var(--grad-kuning)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 5v14M19 12l-7 7-7-7" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="stat-label">Terendah</span>
+                    <span class="stat-value">@Format(rekap.Terendah)</span>
+                </span>
+            </div>
+        </div>
+
+        @if (rekap.Pengerjaan.Count == 0)
+        {
+            <div class="card">
+                <div class="empty">
+                    <h3>Belum ada peserta</h3>
+                    <p>Belum ada yang memulai paket ujian ini. Bagikan informasinya ke peserta.</p>
+                </div>
+            </div>
+        }
+        else
+        {
+            @if (rekap.Pengerjaan.Any(p => p.BelumDitutup))
+            {
+                <div class="alert alert-warning alert-row">
+                    <span>
+                        Ada <strong>@rekap.Pengerjaan.Count(p => p.BelumDitutup)</strong> pengerjaan yang waktunya
+                        sudah habis tapi belum dinilai.
+                    </span>
+                    <button class="btn btn-ghost btn-sm" disabled="@sedangMenutup" @onclick="TutupKedaluwarsaAsync">
+                        @(sedangMenutup ? "Memproses..." : "Tutup dan nilai sekarang")
+                    </button>
+                </div>
+            }
+
+            <div class="card">
+                <div class="card-head">
+                    <h2>Hasil Peserta</h2>
+                    <span class="badge badge-biru">
+                        @rekap.JumlahDinilai dari @rekap.JumlahPengerjaan sudah dinilai
+                    </span>
+                </div>
+
+                <div class="table-tools">
+                    <input class="input filter-cari" placeholder="Cari nama / ID peserta…"
+                           @bind="cariPeserta" @bind:event="oninput" @bind:after="ResetHal" />
+                    <div class="filter-chips">
+                        <button class="filter-chip @(Fp(null))" @onclick='() => { statusPeserta = null; halaman = 1; }'>Semua</button>
+                        <button class="filter-chip @(Fp("Mengerjakan"))" @onclick='() => { statusPeserta = "Mengerjakan"; halaman = 1; }'>Mengerjakan</button>
+                        <button class="filter-chip @(Fp("Selesai"))" @onclick='() => { statusPeserta = "Selesai"; halaman = 1; }'>Selesai</button>
+                        <button class="filter-chip @(Fp("WaktuHabis"))" @onclick='() => { statusPeserta = "WaktuHabis"; halaman = 1; }'>Waktu habis</button>
+                        <button class="filter-chip @(Fp("BelumDitutup"))" @onclick='() => { statusPeserta = "BelumDitutup"; halaman = 1; }'>Belum ditutup</button>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width:60px">No</th>
+                                <th>Identitas</th>
+                                <th style="width:150px">Status</th>
+                                <th style="width:100px">Skor</th>
+                                <th style="width:140px">Mulai</th>
+                                <th style="width:140px">Selesai</th>
+                                <th class="actions" style="width:140px">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var i = 0; i < PesertaPerHal.Count; i++)
+                            {
+                                var p = PesertaPerHal[i];
+                                <tr>
+                                    <td class="num">@(i + 1)</td>
+                                    <td class="grow">
+                                        <span class="cell-strong">@(string.IsNullOrWhiteSpace(p.NamaSiswa) ? "(tanpa nama)" : p.NamaSiswa)</span>
+                                        <span class="cell-sub">@p.UserId</span>
+                                    </td>
+                                    <td>
+                                        @if (p.BelumDitutup)
+                                        {
+                                            <span class="badge badge-abu">Belum ditutup</span>
+                                        }
+                                        else if (p.Status == "Selesai")
+                                        {
+                                            <span class="badge badge-hijau">
+                                                <span class="dot-status"></span> Selesai
+                                            </span>
+                                        }
+                                        else if (p.Status == "WaktuHabis")
+                                        {
+                                            <span class="badge badge-merah">Waktu habis</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-kuning">
+                                                <span class="dot-status"></span> Mengerjakan
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="num">@Format(p.Skor)</td>
+                                    <td class="nowrap">@p.WaktuMulai.ToString("dd MMM HH:mm")</td>
+                                    <td class="nowrap">@(p.WaktuSelesai?.ToString("dd MMM HH:mm") ?? "—")</td>
+                                    <td class="actions">
+                                        @if (p.Status is "Selesai" or "WaktuHabis")
+                                        {
+                                            <a class="btn btn-ghost btn-sm" href="@($"kerjakan-ujian/{p.PengerjaanId}/preview")">Lihat</a>
+                                            <a class="btn btn-ghost btn-sm" href="@($"koreksi/{p.PengerjaanId}")">Koreksi</a>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-ghost btn-sm" href="@($"kerjakan-ujian/{p.PengerjaanId}")">Lanjut</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        @if (PesertaTertampil.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" class="text-muted" style="text-align:center;padding:26px 14px">
+                                        Tidak ada peserta yang cocok dengan filter.
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                    @if (JumlahHalPeserta > 1)
+                    {
+                        <div class="paginasi">
+                            <button class="btn btn-quiet btn-sm" disabled="@(halaman <= 1)" @onclick="() => halaman--">←</button>
+                            @for (var h = 1; h <= JumlahHalPeserta; h++)
+                            {
+                                var hh = h;
+                                <button class='filter-chip @(hh == halaman ? "on" : "")' @onclick="() => halaman = hh">@hh</button>
+                            }
+                            <button class="btn btn-quiet btn-sm" disabled="@(halaman >= JumlahHalPeserta)" @onclick="() => halaman++">→</button>
+                        </div>
+                    }
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<PaketUjianBankDto> pakets = new();
+    private PesertaPaketResponseDto? rekap;
+    private int? pilihId;
+    private bool memuat = true;
+    private bool sedangMenutup;
+    private string? loadError;
+    private string? error;
+
+    private string? cariPeserta;
+    private string? statusPeserta;
+    private bool sedangEkspor;
+
+    private async Task EksporAsync()
+    {
+        if (pilihId is null || sedangEkspor)
+            return;
+
+        sedangEkspor = true;
+        error = null;
+        StateHasChanged();
+
+        var hasil = await Api.UnduhRekapExcelAsync(pilihId.Value);
+        sedangEkspor = false;
+
+        if (!hasil.Berhasil || hasil.Data is null)
+        {
+            error = hasil.Error;
+            return;
+        }
+
+        var judul = rekap?.Paket.Judul ?? $"paket-{pilihId}";
+        var nama = string.Concat(judul.Where(char.IsLetterOrDigit));
+        if (string.IsNullOrWhiteSpace(nama) || nama.Length > 40) nama = nama.Length > 40 ? nama[..40] : "rekap";
+        await JS.InvokeVoidAsync("usmk.unduhFile", Convert.ToBase64String(hasil.Data), $"Rekap-{nama}.xlsx");
+    }
+
+    private List<PesertaPengerjaanDto> PesertaTertampil
+    {
+        get
+        {
+            if (rekap is null)
+                return new();
+
+            var cari = cariPeserta?.Trim();
+            return rekap.Pengerjaan
+                .Where(p =>
+                    (string.IsNullOrWhiteSpace(cari) ||
+                     (p.NamaSiswa?.Contains(cari, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                     (p.UserId?.Contains(cari, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+                    (statusPeserta is null || LabelStatus(p) == statusPeserta))
+                .ToList();
+        }
+    }
+
+    private string Fp(string? target) => statusPeserta == target ? "on" : "";
+
+    private static string LabelStatus(PesertaPengerjaanDto p) =>
+        p.BelumDitutup ? "BelumDitutup" : p.Status;
+
+    private int halaman = 1;
+    private const int UkuranHalaman = 10;
+
+    private int JumlahHalPeserta => Math.Max(1, (PesertaTertampil.Count + UkuranHalaman - 1) / UkuranHalaman);
+
+    private int HalTerkini => Math.Clamp(halaman, 1, JumlahHalPeserta);
+
+    private List<PesertaPengerjaanDto> PesertaPerHal =>
+        PesertaTertampil.Skip((HalTerkini - 1) * UkuranHalaman).Take(UkuranHalaman).ToList();
+
+    private void ResetHal() => halaman = 1;
+
+    [SupplyParameterFromQuery(Name = "paket")]
+    private string? PaketDariUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var respons = await Api.AmbilDaftarPaketAsync();
+        memuat = false;
+
+        if (!respons.Berhasil)
+        {
+            pakets = new();
+            loadError = respons.Error;
+            return;
+        }
+
+        pakets = respons.Data!
+            .Where(p => p.IsPublished)
+            .OrderByDescending(p => p.Id)
+            .ToList();
+        loadError = null;
+
+        if (int.TryParse(PaketDariUrl, out var dariUrl) && pakets.Any(p => p.Id == dariUrl))
+        {
+            pilihId = dariUrl;
+            await MuatRekapAsync();
+        }
+    }
+
+    private async Task PilihPaketAsync(ChangeEventArgs e)
+    {
+        error = null;
+        rekap = null;
+        halaman = 1;
+        pilihId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+
+        if (pilihId is not null)
+            await MuatRekapAsync();
+    }
+
+    private async Task MuatRekapAsync()
+    {
+        if (pilihId is null)
+            return;
+
+        var respons = await Api.AmbilPesertaPaketAsync(pilihId.Value);
+
+        if (respons.Berhasil)
+            rekap = respons.Data!;
+        else
+            error = respons.Error;
+    }
+
+    private async Task TutupKedaluwarsaAsync()
+    {
+        if (rekap is null || sedangMenutup || pilihId is null)
+            return;
+
+        var kedaluwarsa = rekap.Pengerjaan.Where(p => p.BelumDitutup).Select(p => p.PengerjaanId).ToList();
+
+        if (kedaluwarsa.Count == 0)
+            return;
+
+        sedangMenutup = true;
+        error = null;
+
+        var hasil = await Api.TutupKedaluwarsaPaketAsync(
+            pilihId.Value, new TutupKedaluwarsaRequest(kedaluwarsa));
+
+        sedangMenutup = false;
+
+        if (!hasil.Berhasil)
+            error = hasil.Error;
+
+        await MuatRekapAsync();
+    }
+
+    private static string Format(decimal? nilai) => nilai?.ToString("0.##") ?? "-";
+}

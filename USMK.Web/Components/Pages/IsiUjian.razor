@@ -1,0 +1,1034 @@
+@page "/kerjakan-ujian/{PengerjaanId:int}"
+@layout ExamLayout
+@attribute [Authorize]
+@rendermode InteractiveServer
+@implements IDisposable
+@inject UsmkApi Api
+@inject NavigationManager Nav
+@inject ILogger<IsiUjian> Log
+@inject IJSRuntime JS
+@inject PencatatKeluar Pencatat
+
+<PageTitle>@(data?.Judul ?? "Kerjakan Ujian") · USMK</PageTitle>
+
+@if (memuat)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="skeleton-stack">
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:180px"></div>
+        </div>
+    </div>
+}
+else if (data is null)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="page-center" style="padding:0">
+            <div class="card card-pad card-narrow text-center" style="margin:0">
+                <span class="icon-bubble icon-bubble-lg icon-bubble-danger">!</span>
+                <h1 class="mt-3">Tidak bisa lanjut</h1>
+                <p class="text-muted">@(loadError ?? "Pengerjaan tidak ditemukan.")</p>
+                <a class="btn btn-primary" href="kerjakan-ujian">Kembali ke daftar ujian</a>
+            </div>
+        </div>
+    </div>
+}
+else if (padam)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="page-center" style="padding:0">
+            <div class="card card-pad card-narrow text-center" style="margin:0">
+                <span class="icon-bubble icon-bubble-lg icon-bubble-kuning">!</span>
+                <h1 class="mt-3">Ujian sudah berakhir</h1>
+                <p class="text-muted">@padamPesan</p>
+                <div class="btn-row" style="justify-content:center">
+                    <a class="btn btn-primary" href="@($"kerjakan-ujian/{PengerjaanId}/preview")">Lihat jawaban</a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="exam-topbar" style="position:sticky;top:0;z-index:20">
+        <div>
+            <a class="muted-sm" href="kerjakan-ujian" style="display:block"
+               @onclick="KeluarDariUjianAsync" @onclick:preventDefault>← Kerjakan ujian</a>
+            <h1 class="exam-title" style="margin:0">@data.Judul</h1>
+            <span class="exam-meta">
+                @TotalSoal soal · @TotalDijawab terjawab · @TotalBelum belum
+            </span>
+        </div>
+
+        <div class="timer @KelasTimer" role="timer" aria-live="polite">
+            <span class="timer-label">Sisa waktu</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+            </svg>
+            @(tanpaBatas ? "Tanpa batas" : FormatWaktu(sisaDetik))
+        </div>
+
+        <div>
+            <button class="btn btn-primary" disabled="@(sedangSimpan || sedangSelesai)" @onclick="() => konfirmasi = true">
+                @(sedangSelesai ? "Mengirim..." : "Selesai & Kirim")
+            </button>
+        </div>
+    </div>
+
+    @if (peringatanLayarBaru && peringatanLayar > 0 && !perluLayarPenuh)
+    {
+        <div class="alert alert-danger" style="margin-top:12px" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            <span style="flex:1">
+                <strong>Peringatan @peringatanLayar:</strong> @peringatanLayarPesan
+            </span>
+            <button class="btn btn-ghost btn-sm" @onclick="() => peringatanLayarBaru = false">Mengerti</button>
+        </div>
+    }
+
+    <div class="exam-progress">
+        <div class="exam-progress-row">
+            <span>@TotalDijawab dari @TotalSoal soal terjawab · otomatis tersimpan</span>
+            <span>@PersenDijawab.ToString("0")%</span>
+        </div>
+        <div class="progress">
+            <div class="progress-bar" style="@($"width:{PersenDijawab}%")"></div>
+        </div>
+    </div>
+
+    <div class="soal-nav" aria-label="Navigasi soal">
+        @foreach (var b in data.Bagians)
+        {
+            <div class="soal-nav-group">
+                <span class="soal-nav-label" title="Bagian @b.Urutan">@b.Urutan</span>
+                @foreach (var s in b.Soals)
+                {
+                    <button type="button"
+                            class="soal-chip @(Terisi(s) ? "chip-isi" : "") @(aktifSoalId == s.Id ? "chip-aktif" : "")"
+                            title="Soal @s.Urutan · @b.Judul"
+                            @onclick="() => LoncatiSoal(s.Id)">
+                        @s.Urutan
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @error
+        </div>
+    }
+
+    @if (perluLayarPenuh && !padam && !sesiSelesai)
+    {
+        <div class="overlay-backdrop" style="z-index:1200">
+            <div class="modal-card">
+                <span class="modal-icon">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+                    </svg>
+                </span>
+                <h3>Ujian wajib layar penuh</h3>
+                <p>@(peringatanLayarPesan ?? "Ujian ini hanya boleh dikerjakan dalam layar penuh.")</p>
+                @if (peringatanLayar > 0)
+                {
+                    <p style="color:#a3163c"><strong>@peringatanLayar</strong> kali peringatan</p>
+                }
+                <div class="btn-row" style="justify-content:center">
+                    <button class="btn btn-primary" @onclick="() => MasukLayarPenuhAsync()">
+                        Masuk layar penuh
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (konfirmasi)
+    {
+        <div class="overlay-backdrop" @onclick="() => konfirmasi = false">
+            <div class="modal-card" @onclick:stopPropagation>
+                <span class="modal-icon">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 2L11 13" />
+                        <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+                    </svg>
+                </span>
+                <h3>Kumpulkan ujian?</h3>
+                <p>
+                    @if (TotalBelum > 0)
+                    {
+                        <strong>Masih ada @TotalBelum soal yang belum dijawab.</strong>
+                        <br />
+                    }
+                    Jawaban tidak bisa diubah setelah dikumpulkan.
+                </p>
+                <div class="btn-row">
+                    <button class="btn btn-ghost" @onclick="() => konfirmasi = false">Batal</button>
+                    <button class="btn btn-danger" disabled="@(sedangSimpan || sedangSelesai)" @onclick="SelesaiAsync">
+                        @(sedangSelesai ? "Mengumpulkan..." : "Ya, kumpulkan")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @foreach (var bagian in data.Bagians)
+    {
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-head">
+                <div class="grow">
+                    <span class="muted-sm">Bagian @bagian.Urutan</span>
+                    <h2 style="margin:2px 0 0">@bagian.Judul</h2>
+                    @if (!string.IsNullOrWhiteSpace(bagian.Deskripsi))
+                    {
+                        <span class="cell-sub">@bagian.Deskripsi</span>
+                    }
+                </div>
+                <span class="badge badge-biru">@bagian.Soals.Count soal</span>
+            </div>
+
+            <div class="card-body-pad">
+                @foreach (var s in bagian.Soals)
+                {
+                    <div class="soal-card" id="soal-@s.Id" style="margin-bottom:18px">
+                        <div style="display:flex;gap:10px;align-items:flex-start">
+                            <span class="badge @(Terisi(s) ? "badge-hijau" : "badge-abu")">@s.Urutan</span>
+                            <div style="flex:1;min-width:0">
+                                <p style="margin:0 0 4px;font-weight:600">@s.Teks</p>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                                    @if (s.Wajib)
+                                    {
+                                        <span class="badge badge-kuning">Wajib</span>
+                                    }
+                                    <span class="badge badge-ungu">@JenisSoal.Singkat(s.Jenis)</span>
+                                    <span class="simpan @KelasSimpan(s.Id)">
+                                        @if (menyimpan.Contains(s.Id))
+                                        {
+                                            <span>Menyimpan...</span>
+                                        }
+                                        else if (tersimpan.Contains(s.Id))
+                                        {
+                                            <span class="text-muted">Tersimpan</span>
+                                        }
+                                    </span>
+                                </div>
+
+                                @switch (s.Jenis)
+                                {
+                                    case JenisSoal.PilihanGanda:
+                                        <div class="opsi-list">
+                                            @for (var i = 0; i < s.Options.Count; i++)
+                                            {
+                                                var opsi = s.Options[i];
+                                                var opsiId = opsi.Id;
+                                                var terpilih = pilihan[s.Id] == opsiId;
+                                                <label class="opsi @(terpilih ? "pilih" : "")">
+                                                    <input type="radio" name="@($"soal-{s.Id}")"
+                                                           checked="@terpilih"
+                                                           disabled="@sedangSelesai"
+                                                           @onchange="() => Pilih(s.Id, opsiId)" />
+                                                    <span class="opsi-huruf">@Huruf(i)</span>
+                                                    <span class="opsi-teks">@opsi.Teks</span>
+                                                </label>
+                                            }
+                                        </div>
+                                        break;
+
+                                    case JenisSoal.Dropdown:
+                                        <select class="input" style="max-width:420px"
+                                                value="@(pilihan[s.Id]?.ToString() ?? "")"
+                                                disabled="@sedangSelesai"
+                                                @onchange="e => PilihDropdown(s.Id, e.Value)">
+                                            <option value="">-- Pilih jawaban --</option>
+                                            @foreach (var o in s.Options)
+                                            {
+                                                <option value="@o.Id">@o.Teks</option>
+                                            }
+                                        </select>
+                                        break;
+
+                                    case JenisSoal.Checkbox:
+                                        <div class="opsi-list">
+                                            @for (var i = 0; i < s.Options.Count; i++)
+                                            {
+                                                var opsi = s.Options[i];
+                                                var opsiId = opsi.Id;
+                                                var terpilih = centang[s.Id].Contains(opsiId);
+                                                <label class="opsi @(terpilih ? "pilih" : "")">
+                                                    <input type="checkbox"
+                                                           checked="@terpilih"
+                                                           disabled="@sedangSelesai"
+                                                           @onchange="e => Centang(s.Id, opsiId, e.Value)" />
+                                                    <span class="opsi-huruf">@Huruf(i)</span>
+                                                    <span class="opsi-teks">@opsi.Teks</span>
+                                                </label>
+                                            }
+                                        </div>
+                                        <p class="hint" style="margin-top:8px">Boleh memilih lebih dari satu jawaban.</p>
+                                        break;
+
+                                    case JenisSoal.RateScale:
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                            @for (var v = s.SkalaMin; v <= s.SkalaMax; v++)
+                                            {
+                                                var skala = v;
+                                                var terpilih = nilai[s.Id] == skala;
+                                                <label class="opsi @(terpilih ? "pilih" : "")"
+                                                       style="flex:1;min-width:56px;justify-content:center;gap:8px">
+                                                    <input type="radio"
+                                                           name="rate-@s.Id"
+                                                           checked="@terpilih"
+                                                           disabled="@sedangSelesai"
+                                                           @onchange="() => PilihRate(s.Id, skala)" />
+                                                    <span class="opsi-teks">@skala</span>
+                                                </label>
+                                            }
+                                        </div>
+                                        <div class="flex-between muted-sm text-muted" style="margin-top:8px">
+                                            <span>@(s.LabelSkalaMin ?? s.SkalaMin.ToString())</span>
+                                            <span>@(s.LabelSkalaMax ?? s.SkalaMax.ToString())</span>
+                                        </div>
+                                        break;
+
+                                    case JenisSoal.MatrixSkala:
+                                        <div class="table-wrap">
+                                            <table class="table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Pernyataan</th>
+                                                        @for (var v = s.SkalaMin; v <= s.SkalaMax; v++)
+                                                        {
+                                                            <th class="num" style="width:70px;text-align:center">@v</th>
+                                                        }
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var baris in s.Options)
+                                                    {
+                                                        var barisId = baris.Id;
+                                                        <tr>
+                                                            <td class="grow">@baris.Teks</td>
+                                                            @for (var v = s.SkalaMin; v <= s.SkalaMax; v++)
+                                                            {
+                                                                var nilai = v;
+                                                                var terpilih = matrix[s.Id].TryGetValue(barisId, out var m) && m == nilai;
+                                                                <td class="num" style="text-align:center">
+                                                                    <input type="radio"
+                                                                           name="m-@s.Id-@barisId"
+                                                                           checked="@terpilih"
+                                                                           disabled="@sedangSelesai"
+                                                                           @onchange="() => SetMatriks(s.Id, barisId, nilai)" />
+                                                                </td>
+                                                            }
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(s.LabelSkalaMin) || !string.IsNullOrWhiteSpace(s.LabelSkalaMax))
+                                        {
+                                            <div class="flex-between muted-sm text-muted" style="margin-top:8px">
+                                                <span>@s.LabelSkalaMin</span>
+                                                <span>@s.LabelSkalaMax</span>
+                                            </div>
+                                        }
+                                        break;
+
+                                    case JenisSoal.TeksPanjang:
+                                        <textarea class="input" rows="8"
+                                                  placeholder="Tulis jawabanmu di sini..."
+                                                  disabled="@sedangSelesai"
+                                                  value="@teks[s.Id]"
+                                                  @onchange="e => SetTeks(s.Id, e.Value?.ToString())"></textarea>
+                                        <p class="hint" style="margin-top:8px">
+                                            Jawaban akan dinilai oleh pengawas.
+                                        </p>
+                                        break;
+
+                                    case JenisSoal.Angka:
+                                        <input class="input" style="max-width:280px" type="number" step="any"
+                                               placeholder="Tulis jawaban angka..."
+                                               disabled="@sedangSelesai"
+                                               value="@teks[s.Id]"
+                                               @onchange="e => SetTeks(s.Id, e.Value?.ToString())" />
+                                        break;
+
+                                    case JenisSoal.Tanggal:
+                                        <input class="input" style="max-width:280px" type="date"
+                                               disabled="@sedangSelesai"
+                                               value="@teks[s.Id]"
+                                               @onchange="e => SetTeks(s.Id, e.Value?.ToString())" />
+                                        break;
+
+                                    default:
+                                        <input class="input" style="max-width:480px"
+                                               placeholder="Tulis jawabanmu..."
+                                               disabled="@sedangSelesai"
+                                               value="@teks[s.Id]"
+                                               @onchange="e => SetTeks(s.Id, e.Value?.ToString())" />
+                                        break;
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="exam-progress">
+        <div class="exam-progress-row">
+            <span>Pastikan semua soal wajib sudah dijawab sebelum mengirim.</span>
+            <button class="btn btn-primary" disabled="@(sedangSimpan || sedangSelesai)"
+                    @onclick="() => konfirmasi = true">
+                @(sedangSelesai ? "Mengirim..." : "Selesai & Kirim")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int PengerjaanId { get; set; }
+
+    private PengerjaanSoalDto? data;
+    private bool memuat = true;
+    private bool sedangSimpan;
+    private bool sedangSelesai;
+    private bool konfirmasi;
+    private bool padam;
+
+    /// <summary>True setelah ujian dikumpulkan/waktu habis supaya keluar halaman tidak dihitung.</summary>
+    private bool sesiSelesai;
+
+    /// <summary>
+    /// True setelah komponen dirender interaktif. Instans saat prerender juga
+    /// memanggil <see cref="Dispose"/>, tapi itu bukan peserta yang keluar ujian,
+    /// jadi tidak boleh menghitung keluar.
+    /// </summary>
+    private bool interaktif;
+
+    private string? padamPesan;
+    private string? loadError;
+    private string? error;
+    private int? aktifSoalId;
+
+    /// <summary>Status layar penuh: wajib selama ujian berjalan.</summary>
+    private bool layarPenuh;
+
+    /// <summary>True kalau overlay "wajib layar penuh" sedang menutup halaman ujian.</summary>
+    private bool perluLayarPenuh;
+
+    private int peringatanLayar;
+    private string? peringatanLayarPesan;
+    private bool peringatanLayarBaru;
+    private bool pantauanLayarTerpasang;
+    private DotNetObjectReference<IsiUjian>? pantauLayar;
+
+    /// <summary>
+    /// True ketika pelanggaran untuk "halaman sedang tersembunyi" sudah tercatat
+    /// dan peserta belum kembali. Dipakai supaya tutup tab tidak dihitung dua kali
+    /// (visibilitychange lalu Dispose).
+    /// </summary>
+    private bool pergiTerhitung;
+
+    /// <summary>Peristiwa beruntun dari satu aksi yang sama tidak boleh dobel hitung.</summary>
+    private DateTime pelanggaranTerakhirUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// Peristiwa dari satu aksi yang sama (Esc lalu pindah tab, dsb) datang
+    /// beruntun dalam hitungan puluhan milidetik. Jendelanya sengaja pendek
+    /// supaya pelanggaran peserta yang benar-benar berurutan tetap terhitung.
+    /// </summary>
+    private static readonly TimeSpan JedaPelanggaran = TimeSpan.FromMilliseconds(800);
+
+    private readonly Dictionary<int, int?> pilihan = new();
+    private readonly Dictionary<int, HashSet<int>> centang = new();
+    private readonly Dictionary<int, string> teks = new();
+    private readonly Dictionary<int, int> nilai = new();
+    private readonly Dictionary<int, Dictionary<int, int>> matrix = new();
+    private readonly HashSet<int> tersimpan = new();
+    private readonly HashSet<int> menyimpan = new();
+    private Dictionary<int, SoalKerjaDto> soalMap = new();
+
+    private int sisaDetik;
+    private DateTime batasUtc;
+    private bool tanpaBatas;
+    private bool timerDimulai;
+    private CancellationTokenSource? timer;
+
+    private const int MaksPercobaanSelesai = 3;
+    private int percobaanSelesai;
+
+    private int TotalSoal => data?.Bagians.Sum(b => b.Soals.Count) ?? 0;
+    private int TotalDijawab => data?.Bagians.SelectMany(b => b.Soals).Count(Terisi) ?? 0;
+    private int TotalBelum => TotalSoal - TotalDijawab;
+    private double PersenDijawab => TotalSoal == 0 ? 0 : TotalDijawab * 100d / TotalSoal;
+
+    private async Task LoncatiSoal(int soalId)
+    {
+        aktifSoalId = soalId;
+        await JS.InvokeVoidAsync("usmk.gulirSoal", $"soal-{soalId}");
+    }
+
+    private string KelasTimer => sisaDetik switch
+    {
+        <= 60 => "bahaya",
+        <= 300 => "pakai",
+        _ => ""
+    };
+
+    private string KelasSimpan(int soalId)
+    {
+        if (menyimpan.Contains(soalId)) return "simpan-sibuk";
+        return tersimpan.Contains(soalId) ? "simpan-ok" : "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hasil = await Api.AmbilSoalKerjaAsync(PengerjaanId);
+        memuat = false;
+
+        if (!hasil.Berhasil || hasil.Data is null)
+        {
+            data = null;
+            loadError = hasil.Error;
+            return;
+        }
+
+        data = hasil.Data;
+
+        // Pantauan layar akan dipasang setelah komponen interaktif (OnAfterRenderAsync firstRender).
+        // Simpan data dulu agar guard di PasangPantauanLayarAsync bisa dilewati.
+
+        tanpaBatas = (data.BatasWaktu - DateTime.Now).TotalDays > 365;
+        sisaDetik = Math.Max(0, data.SisaDetik);
+        batasUtc = data.BatasWaktu;
+
+        if (data.Status != "Berjalan")
+        {
+            Padam(data.Status, data.Status == "WaktuHabis"
+                ? "Waktu pengerjaan habis, jawaban sudah dikumpulkan otomatis."
+                : "Ujian sudah dikumpulkan.");
+            return;
+        }
+
+        foreach (var s in data.Bagians.SelectMany(b => b.Soals))
+        {
+            soalMap[s.Id] = s;
+            pilihan[s.Id] = s.OpsiId;
+            centang[s.Id] = s.OpsiIds is { Count: > 0 } ? s.OpsiIds.ToHashSet() : new HashSet<int>();
+            teks[s.Id] = s.TeksJawaban ?? "";
+            nilai[s.Id] = s.Nilai ?? 0;
+            matrix[s.Id] = s.Matrix ?? new Dictionary<int, int>();
+
+            if (Terisi(s))
+                tersimpan.Add(s.Id);
+        }
+    }
+
+    private bool Terisi(SoalKerjaDto s)
+    {
+        var soalId = s.Id;
+        return s.Jenis switch
+        {
+            JenisSoal.PilihanGanda or JenisSoal.Dropdown => pilihan[soalId] is not null,
+            JenisSoal.Checkbox => centang[soalId].Count > 0,
+            JenisSoal.RateScale => nilai[soalId] != 0,
+            JenisSoal.MatrixSkala => matrix[soalId].Count > 0,
+            _ => !string.IsNullOrWhiteSpace(teks[soalId])
+        };
+    }
+
+    private void Padam(string status, string pesan)
+    {
+        padam = true;
+        padamPesan = pesan;
+        sesiSelesai = true;
+        StopTimer();
+    }
+
+    /// <summary>
+    /// Keluar lewat link "← Kerjakan ujian": keluar dicatat dulu baru pindah
+    /// halaman supaya hitungannya pasti terkirim sebelum komponen dibuang.
+    /// <see cref="Dispose"/> tetap menangani refresh, tombol back browser,
+    /// dan menutup tab.
+    /// </summary>
+    private async Task KeluarDariUjianAsync()
+    {
+        if (!sesiSelesai && data is { Status: "Berjalan" })
+        {
+            sesiSelesai = true;
+            await Pencatat.CatatAsync(PengerjaanId);
+        }
+
+        // Tutup layar penuh dulu; kalau tidak, halaman daftar ikut tampil
+        // dalam layar penuh dan peserta tidak bisa keluar sendiri.
+        await AkhiriLayarPenuhAsync();
+
+        Nav.NavigateTo("kerjakan-ujian");
+    }
+
+    private static string Huruf(int i)
+    {
+        if (i < 26) return ((char)('A' + i)).ToString();
+        return (char)('A' + (i / 26 - 1)) + ((char)('A' + (i % 26))).ToString();
+    }
+
+    private static int? ParseId(object? value)
+    {
+        if (value is null || string.IsNullOrWhiteSpace(value.ToString()))
+            return null;
+
+        return int.TryParse(value.ToString(), out var id) ? id : null;
+    }
+
+    private void Pilih(int soalId, int opsiId)
+    {
+        pilihan[soalId] = opsiId;
+        _ = SimpanAsync(soalId);
+    }
+
+    private void PilihDropdown(int soalId, object? value)
+    {
+        pilihan[soalId] = ParseId(value);
+        _ = SimpanAsync(soalId);
+    }
+
+    private void Centang(int soalId, int opsiId, object? value)
+    {
+        var on = value is true;
+        var set = centang[soalId];
+
+        if (on)
+            set.Add(opsiId);
+        else
+            set.Remove(opsiId);
+
+        _ = SimpanAsync(soalId);
+    }
+
+    private void PilihRate(int soalId, int value)
+    {
+        nilai[soalId] = value;
+        _ = SimpanAsync(soalId);
+    }
+
+    private void SetMatriks(int soalId, int barisId, int value)
+    {
+        matrix[soalId][barisId] = value;
+        _ = SimpanAsync(soalId);
+    }
+
+    private void SetTeks(int soalId, string? value)
+    {
+        teks[soalId] = value ?? "";
+        _ = SimpanAsync(soalId);
+    }
+
+    private async Task SimpanAsync(int soalId)
+    {
+        if (sedangSelesai || padam || menyimpan.Contains(soalId))
+            return;
+
+        if (!soalMap.TryGetValue(soalId, out var soal))
+            return;
+
+        sedangSimpan = true;
+        error = null;
+        tersimpan.Remove(soalId);
+        menyimpan.Add(soalId);
+
+        SimpanJawabanButirRequest payload = soal.Jenis switch
+        {
+            JenisSoal.PilihanGanda or JenisSoal.Dropdown =>
+                new SimpanJawabanButirRequest(soalId, OpsiId: pilihan[soalId]),
+            JenisSoal.Checkbox =>
+                new SimpanJawabanButirRequest(soalId, OpsiIds: centang[soalId].ToList()),
+            JenisSoal.RateScale =>
+                new SimpanJawabanButirRequest(soalId, Nilai: nilai[soalId]),
+            JenisSoal.MatrixSkala =>
+                new SimpanJawabanButirRequest(soalId, Matrix: matrix[soalId]),
+            _ =>
+                new SimpanJawabanButirRequest(soalId, Teks: teks[soalId])
+        };
+
+        var hasil = await Api.SimpanJawabanButirAsync(PengerjaanId, payload);
+        menyimpan.Remove(soalId);
+
+        if (hasil.Berhasil)
+        {
+            tersimpan.Add(soalId);
+            sisaDetik = Math.Max(0, hasil.Data?.SisaDetik ?? sisaDetik);
+            if (!tanpaBatas)
+                batasUtc = DateTime.Now.AddSeconds(sisaDetik);
+        }
+        else
+        {
+            if (statusAkhir(hasil.Error))
+            {
+                Padam("WaktuHabis", "Waktu pengerjaan sudah habis, jawaban dikumpulkan otomatis.");
+                return;
+            }
+
+            error = hasil.Error;
+        }
+
+        sedangSimpan = false;
+        StateHasChanged();
+    }
+
+    private static bool statusAkhir(string? pesan) =>
+        !string.IsNullOrWhiteSpace(pesan) && pesan.Contains("sudah selesai", StringComparison.OrdinalIgnoreCase)
+        || !string.IsNullOrWhiteSpace(pesan) && pesan.Contains("waktu", StringComparison.OrdinalIgnoreCase)
+            && pesan.Contains("habis", StringComparison.OrdinalIgnoreCase);
+
+    // Timer dinyalakan setelah komponen benar-benar interaktif dan data soal sudah dimuat.
+    // OnAfterRender dipanggil tiap render, jadi timer menyala begitu data siap
+    // (data baru terisi setelah OnInitializedAsync selesai memberi respons API).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            interaktif = true;
+
+        // Pantauan layar dipasang begitu data ujian siap, bukan di firstRender:
+        // render interaktif pertama sering terjadi sebelum OnInitializedAsync selesai,
+        // sehingga kalau dipasang di firstRender listener-nya tidak pernah terpasang.
+        if (interaktif && !pantauanLayarTerpasang && data is { Status: "Berjalan" } && !sesiSelesai)
+        {
+            pantauanLayarTerpasang = true;
+            await PasangPantauanLayarAsync();
+        }
+
+        if (timerDimulai || padam || data is not { Status: "Berjalan" })
+            return;
+
+        timerDimulai = true;
+        _ = JalankanTimerAsync();
+    }
+
+    /// <summary>
+    /// Pasang listener layar penuh/minimize lalu langsung coba masuk layar penuh.
+    /// Panggilan pertama sering ditolak browser karena bukan gestur pengguna;
+    /// kalau gagal, overlay wajib layar penuh yang memaksa peserta klik tombol.
+    /// </summary>
+    private async Task PasangPantauanLayarAsync()
+    {
+        Log.LogInformation("LAYAR #{PengerjaanId}: panggil, status={Status} sesi={Sesi} padam={Padam}",
+            PengerjaanId, data?.Status, sesiSelesai, padam);
+
+        if (data is not { Status: "Berjalan" } || sesiSelesai)
+        {
+            Log.LogInformation("LAYAR #{PengerjaanId}: lewat guard", PengerjaanId);
+            return;
+        }
+
+        try
+        {
+            pantauLayar ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("usmk.layar.pasang", pantauLayar);
+            Log.LogInformation("LAYAR #{PengerjaanId}: pasang OK", PengerjaanId);
+            await MasukLayarPenuhAsync();
+            Log.LogInformation("LAYAR #{PengerjaanId}: minta selesai, penuh={Penuh} perlu={Perlu}",
+                PengerjaanId, layarPenuh, perluLayarPenuh);
+        }
+        catch (JSException ex)
+        {
+            Log.LogWarning(ex, "Gagal memasang pantauan layar penuh ujian #{PengerjaanId}.", PengerjaanId);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "LAYAR: galat tak terduga ujian #{PengerjaanId}.", PengerjaanId);
+        }
+    }
+
+    /// <summary>Minta layar penuh sekarang (harus dari klik peserta supaya diizinkan browser).</summary>
+    private async Task MasukLayarPenuhAsync()
+    {
+        bool ok;
+        try
+        {
+            ok = await JS.InvokeAsync<bool>("usmk.layar.minta");
+        }
+        catch (JSException ex)
+        {
+            Log.LogWarning(ex, "Gagal meminta layar penuh ujian #{PengerjaanId}.", PengerjaanId);
+            ok = false;
+        }
+
+        layarPenuh = ok;
+        perluLayarPenuh = !ok;
+
+        // Gagal menyalakan layar penuh bukan pelanggaran keluar ruang,
+        // jadi hitungannya tidak ditambah; cukup pesan di overlay.
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Satu-satunya jalur pencatatan pelanggaran. Angkanya diambil dari server
+    /// (BlokiranPeserta.JumlahKeluar) supaya Esc keluar layar penuh, minimize,
+    /// dan keluar lewat tombol kembali semuanya memakai hitungan yang sama
+    /// dan tidak terpisah-pisah.
+    /// </summary>
+    private async Task CatatPelanggaranAsync(string pesan)
+    {
+        if (data is not { Status: "Berjalan" } || sesiSelesai)
+            return;
+
+        // Satu aksi peserta bisa memicu dua peristiwa (misal pindah tab membuat
+        // layar penuh ikut keluar, atau tutup tab memicu visibilitychange lalu
+        // Dispose). Yang datang dalam jeda pendek tidak dihitung ulang.
+        var sekarang = DateTime.UtcNow;
+        if (sekarang - pelanggaranTerakhirUtc < JedaPelanggaran)
+        {
+            Log.LogInformation("PELANGGARAN #{PengerjaanId}: peristiwa beruntun dilewati", PengerjaanId);
+            return;
+        }
+
+        pelanggaranTerakhirUtc = sekarang;
+
+        var hasil = await Api.CatatKeluarAsync(PengerjaanId);
+        var ok = hasil.Berhasil && hasil.Data is not null;
+
+        peringatanLayar = ok ? hasil.Data!.JumlahKeluar : peringatanLayar + 1;
+        peringatanLayarPesan = ok && hasil.Data!.Diblokir
+            ? $"Akun Anda diblokir karena keluar dari ruang ujian {hasil.Data.JumlahKeluar} kali. Hubungi pengelola ujian untuk mereset akun Anda."
+            : pesan;
+        peringatanLayarBaru = true;
+
+        Log.LogInformation("PELANGGARAN #{PengerjaanId}: {Jumlah} kali, diblokir={Diblokir}",
+            PengerjaanId, peringatanLayar, ok && hasil.Data!.Diblokir);
+
+        StateHasChanged();
+    }
+
+    /// <summary>Dipanggil JS saat status layar penuh berubah (termasuk upaya otomatis kembali).</summary>
+    [JSInvokable]
+    public async Task PantauLayarPenuh(bool penuh)
+    {
+        if (data is not { Status: "Berjalan" } || sesiSelesai)
+            return;
+
+        if (penuh)
+        {
+            if (layarPenuh && !perluLayarPenuh)
+                return;
+
+            // Peringatan sengaja TIDAK dihapus: banner tetap terlihat sampai
+            // peserta menekan "Mengerti", walau layar sudah otomatis penuh lagi.
+            layarPenuh = true;
+            perluLayarPenuh = false;
+            StateHasChanged();
+            return;
+        }
+
+        layarPenuh = false;
+        if (perluLayarPenuh)
+            return;
+
+        perluLayarPenuh = true;
+        StateHasChanged();
+        await CatatPelanggaranAsync("Anda keluar dari layar penuh. Ujian hanya boleh dikerjakan dalam layar penuh.");
+    }
+
+    /// <summary>
+    /// Upaya layar penuh otomatis habis tanpa hasil. Ini akibat dari pelanggaran
+    /// yang sudah tercatat (atau halaman yang masih tersembunyi), bukan pelanggaran
+    /// baru, jadi hitungan tidak ditambah: cukup overlay supaya peserta klik tombol.
+    /// </summary>
+    [JSInvokable]
+    public Task LayarPenuhGagal()
+    {
+        if (data is not { Status: "Berjalan" } || sesiSelesai || layarPenuh)
+            return Task.CompletedTask;
+
+        perluLayarPenuh = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Dipanggil JS saat halaman disembunyikan (minimize/pindah tab) atau kembali tampil.</summary>
+    [JSInvokable]
+    public async Task PantauVisibilitas(bool tersembunyi)
+    {
+        if (data is not { Status: "Berjalan" } || sesiSelesai)
+            return;
+
+        if (tersembunyi)
+        {
+            await CatatPelanggaranAsync("Anda meninggalkan halaman ujian (minimize atau pindah tab).");
+            pergiTerhitung = true;
+        }
+        else
+        {
+            pergiTerhitung = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Keluar dari layar penuh setelah ujian selesai supaya halaman preview normal.</summary>
+    private async Task AkhiriLayarPenuhAsync()
+    {
+        perluLayarPenuh = false;
+        layarPenuh = false;
+
+        if (!interaktif)
+            return;
+
+        try { await JS.InvokeAsync<bool>("usmk.layar.keluar"); }
+        catch (JSException) { }
+    }
+
+    private async Task JalankanTimerAsync()
+    {
+        var cts = new CancellationTokenSource();
+        timer = cts;
+
+        try
+        {
+            using var denyut = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            var token = cts.Token;
+
+            while (await denyut.WaitForNextTickAsync(token))
+            {
+                if (padam || sedangSelesai || data is null)
+                    return;
+
+                sisaDetik = Math.Max(0, (int)Math.Ceiling((batasUtc - DateTime.Now).TotalSeconds));
+
+                if (!tanpaBatas && sisaDetik == 0)
+                {
+                    await InvokeAsync(SelesaiAsync);
+                    return;
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Timer dihentikan normal, tidak perlu ditangani.
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Timer ujian #{PengerjaanId} terhenti karena kesalahan.", PengerjaanId);
+        }
+    }
+
+    private async Task SelesaiAsync()
+    {
+        if (sedangSelesai || padam)
+            return;
+
+        sedangSelesai = true;
+        konfirmasi = false;
+        StopTimer();
+        error = null;
+
+        var hasil = await Api.SelesaiKerjakanAsync(PengerjaanId);
+
+        if (hasil.Berhasil)
+        {
+            sedangSelesai = false;
+            sesiSelesai = true;
+            await AkhiriLayarPenuhAsync();
+            var pesan = hasil.Data?.Pesan ?? "Ujian berhasil dikumpulkan.";
+            Nav.NavigateTo($"kerjakan-ujian/{PengerjaanId}/preview?pesan=" + Uri.EscapeDataString(pesan));
+            return;
+        }
+
+        // 409 = sudah ditutup sebelumnya (waktu habis): tampilkan preview saja.
+        if (statusAkhir(hasil.Error))
+        {
+            sedangSelesai = false;
+            sesiSelesai = true;
+            await AkhiriLayarPenuhAsync();
+            Nav.NavigateTo($"kerjakan-ujian/{PengerjaanId}/preview");
+            return;
+        }
+
+        error = hasil.Error;
+        sedangSelesai = false;
+
+        // Timer dihentikan sebelum memanggil API; kalau gagal, nyalakan lagi.
+        if (sisaDetik > 0)
+        {
+            percobaanSelesai = 0;
+            _ = JalankanTimerAsync();
+        }
+        else if (percobaanSelesai < MaksPercobaanSelesai)
+        {
+            percobaanSelesai++;
+            _ = JalankanTimerAsync();
+        }
+        else
+        {
+            Log.LogWarning("Pengumpulan ujian #{PengerjaanId} gagal {Maks} kali: {Error}",
+                PengerjaanId, MaksPercobaanSelesai, hasil.Error);
+        }
+    }
+
+    private void StopTimer()
+    {
+        if (timer is null)
+            return;
+
+        try
+        {
+            timer.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Sudah dibuang.
+        }
+
+        timer.Dispose();
+        timer = null;
+    }
+
+    private static string FormatWaktu(int detik)
+    {
+        var waktu = TimeSpan.FromSeconds(Math.Max(0, detik));
+        return waktu.TotalHours >= 1 ? waktu.ToString(@"h\:mm\:ss") : waktu.ToString(@"mm\:ss");
+    }
+
+    public void Dispose()
+    {
+        StopTimer();
+
+        // Lepas listener layar penuh; kalau circuit sudah tutup, biarkan gagal diam-diam.
+        if (pantauLayar is not null)
+        {
+            // Halaman ujian ditinggalkan (tombol back browser, ganti route, dll):
+            // tutup layar penuh supaya halaman berikutnya tidak ikut terkunci.
+            try { _ = JS.InvokeVoidAsync("usmk.layar.keluar").AsTask().ContinueWith(_ => { }); }
+            catch (JSException) { }
+            try { _ = JS.InvokeVoidAsync("usmk.layar.lepas").AsTask().ContinueWith(_ => { }); }
+            catch (JSException) { }
+            pantauLayar.Dispose();
+            pantauLayar = null;
+        }
+
+        // Halaman ditinggalkan selagi ujian masih berjalan → hitung sebagai satu kali keluar.
+        // Prerender instance tidak dihitung: itu bukan halaman yang ditinggalkan peserta.
+        // Kalau visibilitychange sudah mencatat untuk periode "tersembunyi" ini
+        // (tutup tab), jangan dihitung lagi supaya satu aksi tetap satu hitungan.
+        if (interaktif && !sesiSelesai && !pergiTerhitung && data is { Status: "Berjalan" })
+            _ = Pencatat.CatatAsync(PengerjaanId);
+    }
+}

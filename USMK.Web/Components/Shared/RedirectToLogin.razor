@@ -1,0 +1,16 @@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        // PathAndQuery dipakai supaya garis miring di depan dan query string
+        // (mis. /rekap?ujian=3) ikut terbawa; ToBaseRelativePath membuang keduanya
+        // sehingga tujuan kembali setelah login selalu jatuh ke halaman default.
+        var kembali = Nav.ToAbsoluteUri(Nav.Uri).PathAndQuery;
+        var boleh = kembali.Length > 1 && kembali != "/";
+
+        Nav.NavigateTo(
+            boleh ? $"login?redirect={Uri.EscapeDataString(kembali)}" : "login",
+            forceLoad: true);
+    }
+}

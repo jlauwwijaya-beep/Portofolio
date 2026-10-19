@@ -1,0 +1,398 @@
+@page "/paket-ujian"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Paket Ujian · USMK</PageTitle>
+
+<div class="page-header">
+    <div>
+        <span class="eyebrow">Ujian SMK</span>
+        <h1>Paket Ujian</h1>
+        <p class="text-muted">Buat paket ujian, susun bagian per mata pelajaran, lalu isi soalnya.</p>
+    </div>
+    <a class="btn btn-primary" href="paket-ujian/baru">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+        </svg>
+        Buat Paket Ujian
+    </a>
+</div>
+
+@if (pesan is not null)
+{
+    <div class="alert alert-success">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+        </svg>
+        @pesan
+    </div>
+}
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @error
+    </div>
+}
+
+@if (memuat)
+{
+    <div class="card">
+        <div class="skeleton-stack">
+            @for (var i = 0; i < 4; i++)
+            {
+                <div class="skeleton"></div>
+            }
+        </div>
+    </div>
+}
+else if (pakets.Count == 0)
+{
+    <div class="card">
+        <div class="empty">
+            <span class="icon-bubble icon-bubble-lg icon-bubble-ungu">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                    <path d="M14 3v6h6" />
+                    <path d="M8 13h8M8 17h5" />
+                </svg>
+            </span>
+            <h3>Belum ada paket ujian</h3>
+            <p>Buat paket ujian pertama, tambah bagian dan soal, lalu publikasikan ke siswa.</p>
+            <a class="btn btn-primary" href="paket-ujian/baru">Buat paket ujian</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stat-grid" style="margin-bottom:18px">
+        <div class="stat">
+            <span class="stat-icon" style="background:var(--grad-biru)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                    <path d="M14 3v6h6" />
+                </svg>
+            </span>
+            <span>
+                <span class="stat-label">Total Paket</span>
+                <span class="stat-value">@pakets.Count</span>
+            </span>
+        </div>
+        <div class="stat">
+            <span class="stat-icon" style="background:var(--grad-hijau)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                </svg>
+            </span>
+            <span>
+                <span class="stat-label">Aktif</span>
+                <span class="stat-value">@pakets.Count(p => p.IsPublished)</span>
+            </span>
+        </div>
+        <div class="stat">
+            <span class="stat-icon" style="background:var(--grad-kuning)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+            </span>
+            <span>
+                <span class="stat-label">Draft</span>
+                <span class="stat-value">@pakets.Count(p => !p.IsPublished)</span>
+            </span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <h2>Semua Paket Ujian</h2>
+            <span class="badge badge-biru">@Tertampil.Count paket</span>
+        </div>
+
+        <div class="table-tools">
+            <input class="input filter-cari" placeholder="Cari judul, mapel, atau kelas…"
+                   @bind="namaCari" @bind:event="oninput" @bind:after="ResetHal" />
+            <div class="filter-chips">
+                <button class="filter-chip @(Fk(null))" @onclick='() => { filterStatus = null; halaman = 1; }'>Semua</button>
+                <button class="filter-chip @(Fk("Aktif"))" @onclick='() => { filterStatus = "Aktif"; halaman = 1; }'>Aktif</button>
+                <button class="filter-chip @(Fk("Draft"))" @onclick='() => { filterStatus = "Draft"; halaman = 1; }'>Draft</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width:70px">ID</th>
+                        <th>Judul</th>
+                        <th style="width:170px">Mata Pelajaran</th>
+                        <th style="width:110px">Kelas</th>
+                        <th style="width:90px">Bagian</th>
+                        <th style="width:80px">Soal</th>
+                        <th style="width:110px">Dikerjakan</th>
+                        <th style="width:130px">Status</th>
+                        <th class="actions" style="width:190px">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in TampilPerHal)
+                    {
+                        <tr>
+                            <td class="num">#@p.Id</td>
+                            <td class="grow">
+                                <span class="cell-strong">@p.Judul</span>
+                                @if (!string.IsNullOrWhiteSpace(p.Deskripsi))
+                                {
+                                    <span class="cell-sub truncate">@p.Deskripsi</span>
+                                }
+                                <span class="cell-sub">@TeksJadwal(p)</span>
+                            </td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(p.MataPelajaran))
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-biru">@p.MataPelajaran</span>
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(p.Kelas) ? "—" : p.Kelas)</td>
+                            <td class="num">@p.JumlahBagian</td>
+                            <td class="num">@p.JumlahSoal</td>
+                            <td class="num">@p.JumlahPengerjaan</td>
+                            <td>
+                                @if (p.IsPublished)
+                                {
+                                    <span class="badge badge-hijau"><span class="dot-status"></span> Aktif</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-abu">Draft</span>
+                                }
+                            </td>
+                            <td class="actions">
+                                @if (hapusId == p.Id)
+                                {
+                                    <button class="btn btn-danger btn-sm" disabled="@sedangHapus"
+                                            @onclick="() => HapusAsync(p.Id)">
+                                        @(sedangHapus ? "Hapus..." : "Yakin hapus?")
+                                    </button>
+                                    <button class="btn btn-quiet btn-sm" @onclick="() => hapusId = null">Batal</button>
+                                }
+                                else
+                                {
+                                    <a class="icon-btn ib-edit" title="Kelola paket" href="@($"paket-ujian/{p.Id}")">
+                                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 20h9" />
+                                            <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                        </svg>
+                                    </a>
+                                    <a class="icon-btn ib-peserta" title="Lihat peserta" href="@($"paket-ujian/{p.Id}/peserta")">
+                                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                                            <circle cx="9" cy="7" r="4" />
+                                            <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                                            <path d="M16 3.13a4 4 0 010 7.75" />
+                                        </svg>
+                                    </a>
+                                    <button class="icon-btn ib-salin" title="Duplikat paket" disabled="@(sedangDuplikat == p.Id)"
+                                            @onclick="() => DuplikatAsync(p.Id)">
+                                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="9" y="9" width="12" height="12" rx="2" />
+                                            <path d="M5 15V5a2 2 0 012-2h10" />
+                                        </svg>
+                                    </button>
+                                    <button class="icon-btn danger" title="Hapus paket" @onclick="() => hapusId = p.Id">
+                                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M3 6h18" />
+                                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                                            <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                            <path d="M10 11v6M14 11v6" />
+                                        </svg>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                @if (Tertampil.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="9" class="text-muted" style="text-align:center;padding:26px 14px">
+                                Tidak ada paket ujian yang cocok dengan filter.
+                            </td>
+                        </tr>
+                    }
+</tbody>
+                    </table>
+                </div>
+
+                @if (JumlahHalaman > 1)
+                {
+                    <div class="paginasi">
+                        <button class="btn btn-quiet btn-sm" disabled="@(halaman <= 1)" @onclick="() => halaman--">←</button>
+                        @for (var h = 1; h <= JumlahHalaman; h++)
+                        {
+                            var hh = h;
+                            <button class='filter-chip @(hh == halaman ? "on" : "")' @onclick="() => halaman = hh">@hh</button>
+                        }
+                        <button class="btn btn-quiet btn-sm" disabled="@(halaman >= JumlahHalaman)" @onclick="() => halaman++">→</button>
+                    </div>
+                }
+        </div>
+}
+
+@code {
+    private List<PaketUjianBankDto> pakets = new();
+    private bool memuat = true;
+    private string? pesan;
+    private string? error;
+    private int? hapusId;
+    private bool sedangHapus;
+    private int? sedangDuplikat;
+
+    private string? namaCari;
+    private string? filterStatus;
+
+    private List<PaketUjianBankDto> Tertampil
+    {
+        get
+        {
+            var cari = namaCari?.Trim();
+            return pakets
+                .Where(p =>
+                    (string.IsNullOrWhiteSpace(cari) ||
+                     (p.Judul?.Contains(cari, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                     (p.MataPelajaran?.Contains(cari, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                     (p.Kelas?.Contains(cari, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+                    (filterStatus is null ||
+                     (filterStatus == "Aktif" && p.IsPublished) ||
+                     (filterStatus == "Draft" && !p.IsPublished)))
+                .ToList();
+        }
+    }
+
+    private string Fk(string? target) => filterStatus == target ? "on" : "";
+
+    private int halaman = 1;
+    private const int UkuranHalaman = 10;
+
+    private int JumlahHalaman => Math.Max(1, (Tertampil.Count + UkuranHalaman - 1) / UkuranHalaman);
+
+    private int HalTerkini => Math.Clamp(halaman, 1, JumlahHalaman);
+
+    private List<PaketUjianBankDto> TampilPerHal =>
+        Tertampil.Skip((HalTerkini - 1) * UkuranHalaman).Take(UkuranHalaman).ToList();
+
+    private void ResetHal() => halaman = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        pesan = UrlQuery.Baca(Nav.Uri, "pesan");
+        await MuatAsync();
+    }
+
+    private async Task MuatAsync()
+    {
+        memuat = true;
+        var hasil = await Api.AmbilDaftarPaketAsync();
+
+        if (hasil.Berhasil)
+        {
+            pakets = hasil.Data!;
+            error = null;
+        }
+        else
+        {
+            pakets = new();
+            error = hasil.Error;
+        }
+
+        memuat = false;
+    }
+
+    private async Task HapusAsync(int id)
+    {
+        if (sedangHapus)
+            return;
+
+        sedangHapus = true;
+        pesan = null;
+        error = null;
+
+        var hasil = await Api.HapusPaketAsync(id);
+        sedangHapus = false;
+        hapusId = null;
+
+        if (hasil.Berhasil)
+        {
+            pesan = "Paket ujian berhasil dihapus.";
+            await MuatAsync();
+        }
+        else
+        {
+            error = hasil.Error;
+        }
+    }
+
+    private async Task DuplikatAsync(int id)
+    {
+        if (sedangDuplikat is not null)
+            return;
+
+        sedangDuplikat = id;
+        pesan = null;
+        error = null;
+
+        var hasil = await Api.DuplikatPaketAsync(id);
+        sedangDuplikat = null;
+
+        if (hasil.Berhasil)
+        {
+            var baru = hasil.Data?.Id;
+            if (baru is { } idBaru)
+            {
+                Nav.NavigateTo($"paket-ujian/{idBaru}");
+            }
+            else
+            {
+                pesan = hasil.Data?.Pesan ?? "Paket ujian berhasil diduplikasi.";
+                await MuatAsync();
+            }
+        }
+        else
+        {
+            error = hasil.Error;
+        }
+    }
+
+    private static string TeksJadwal(PaketUjianBankDto p)
+    {
+        var durasi = p.DurasiMenit > 0 ? $"{p.DurasiMenit} menit" : "tanpa batas";
+
+        return p.StatusJadwal switch
+        {
+            "Dibuka" => $"{durasi} · terbuka · {p.WaktuBuka.ToString("dd MMM HH:mm")} – {p.WaktuTutup.ToString("dd MMM HH:mm")}",
+            "BelumDibuka" => $"{durasi} · dibuka {p.WaktuBuka.ToString("dd MMM HH:mm")}",
+            "SudahDitutup" => $"{durasi} · ditutup {p.WaktuTutup.ToString("dd MMM HH:mm")}",
+            _ => durasi
+        };
+    }
+}

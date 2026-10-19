@@ -1,0 +1,90 @@
+@page "/login"
+@attribute [AllowAnonymous]
+
+<PageTitle>Masuk · USMK</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-aside">
+        <a class="brand-lockup" href="/">
+            <span class="brand-mark">U</span>
+            <span>
+                <span class="brand-name">USMK</span>
+                <span class="brand-tag">Ujian Online</span>
+            </span>
+        </a>
+
+        <h1 class="auth-aside-title">Ujian jadi jauh lebih adem.</h1>
+        <p class="auth-aside-text">
+            Satu tempat untuk bank soal, susun ujian, dan lihat hasil peserta
+            dalam hitungan detik.
+        </p>
+
+        <ul class="auth-points">
+            <li>Timer ujian yang sinkron dengan server</li>
+            <li>Jawaban tersimpan otomatis tiap diklik</li>
+            <li>Rekap nilai langsung setelah dikumpulkan</li>
+        </ul>
+    </div>
+
+    <div class="auth-panel">
+        <div class="auth-card">
+            <h2 class="auth-title">Masuk ke akun</h2>
+            <p class="auth-sub">Gunakan email dan password yang terdaftar.</p>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 8v5M12 16h.01" />
+                    </svg>
+                    <span>@Error</span>
+                </div>
+            }
+
+            <form method="post" action="/account/login">
+                <AntiforgeryToken />
+
+                @if (!string.IsNullOrEmpty(ReturnUrl))
+                {
+                    <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+                }
+
+                <div class="field">
+                    <label class="label" for="email">Email</label>
+                    <input id="email" name="Email" class="input" type="email"
+                           autocomplete="username" required
+                           placeholder="nama@sekolah.sch.id" />
+                </div>
+
+                <div class="field">
+                    <label class="label" for="password">Password</label>
+                    <input id="password" name="Password" class="input" type="password"
+                           autocomplete="current-password" required
+                           placeholder="Minimal 8 karakter" />
+                    <p class="hint">Lupa password? Hubungi pengelola sekolah untuk meminta reset.</p>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg">Masuk</button>
+            </form>
+
+            <p class="auth-alt">
+                Belum punya akun?
+                <a href="@LinkDaftar">Daftar sebagai peserta</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "redirect")]
+    private string? ReturnUrl { get; set; }
+
+    private string LinkDaftar => string.IsNullOrWhiteSpace(ReturnUrl)
+        ? "register"
+        : $"register?redirect={Uri.EscapeDataString(ReturnUrl)}";
+}

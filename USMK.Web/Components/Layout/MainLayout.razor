@@ -1,0 +1,104 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@using System.Security.Claims
+
+<div class="app-shell">
+    <NavMenu />
+
+    <div class="app-main">
+        <header class="topbar">
+            <div class="crumb">
+                <span>USMK</span>
+                <span class="sep">/</span>
+                <strong>@JudulHalaman</strong>
+            </div>
+
+            <div class="topbar-right">
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="userchip">
+                            <span class="avatar">@Inisial</span>
+                            <span>
+                                <span class="userchip-name">@NamaTampil</span>
+                                <span class="userchip-role">@Peran</span>
+                            </span>
+                        </div>
+                        <form method="post" action="/account/logout" style="margin:0">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-ghost btn-sm">Keluar</button>
+                        </form>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </header>
+
+        <main class="app-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string NamaTampil { get; set; } = "Pengguna";
+    private string Inisial => InisialDari(NamaTampil);
+    private string Peran { get; set; } = "";
+    private string JudulHalaman { get; set; } = "Beranda";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        JudulHalaman = JudulDari(Nav.Uri);
+
+        if (AuthState is null)
+            return;
+
+        var state = await AuthState;
+        var user = state.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            NamaTampil = user.FindFirst("nama_lengkap")?.Value
+                         ?? user.FindFirst(ClaimTypes.Name)?.Value
+                         ?? user.Identity.Name
+                         ?? "Pengguna";
+
+            Peran = user.IsInRole(DbSeeder.AdminRole) ? "Pengelola" : "Peserta";
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        JudulHalaman = JudulDari(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string JudulDari(string uri)
+    {
+        var path = Nav.ToBaseRelativePath(uri);
+
+        if (path.StartsWith("paket-ujian", StringComparison.OrdinalIgnoreCase)) return "Paket Ujian";
+        if (path.StartsWith("rekap", StringComparison.OrdinalIgnoreCase)) return "Rekap Hasil";
+        if (path.StartsWith("blokir", StringComparison.OrdinalIgnoreCase)) return "Blokir Peserta";
+        if (path.StartsWith("kerjakan", StringComparison.OrdinalIgnoreCase)) return "Mengerjakan Ujian";
+        if (path.StartsWith("koreksi", StringComparison.OrdinalIgnoreCase)) return "Koreksi Ujian";
+
+        return "Beranda";
+    }
+
+    private static string InisialDari(string nama)
+    {
+        var parts = nama.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
+        };
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

@@ -1,0 +1,248 @@
+@page "/blokir-peserta"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject UserManager<ApplicationUser> Users
+
+<PageTitle>Blokir Peserta · USMK</PageTitle>
+
+<div class="page-header">
+    <div>
+        <span class="eyebrow">Untuk Pengelola</span>
+        <h1>Blokir Peserta</h1>
+        <p class="text-muted">
+            Peserta yang keluar dari ruang ujian @BatasKeluar kali otomatis diblokir dan tidak bisa
+            mengikuti ujian. Tombol <strong>Hapus</strong> melepas blokir sekaligus menghapus catatannya
+            supaya daftar tidak menumpuk.
+        </p>
+    </div>
+</div>
+
+@if (pesan is not null)
+{
+    <div class="alert alert-success">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+        </svg>
+        @pesan
+    </div>
+}
+
+@if (memuat)
+{
+    <div class="card">
+        <div class="skeleton-stack">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="skeleton" style="height:64px"></div>
+            }
+        </div>
+    </div>
+}
+else if (error is not null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @error
+    </div>
+}
+else if (daftar.Count == 0)
+{
+    <div class="card">
+        <div class="empty">
+            <span class="icon-bubble icon-bubble-lg">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                </svg>
+            </span>
+            <h3>Belum ada peserta yang keluar ruang ujian</h3>
+            <p>Catatan akan muncul di sini setiap kali peserta meninggalkan ruang ujian sebelum selesai.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-head">
+            <h2>Catatan Keluar Ruang Ujian</h2>
+            <span class="badge badge-biru">@daftar.Count catatan</span>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Peserta</th>
+                        <th style="width:150px">Kelas</th>
+                        <th style="width:150px">Keluar</th>
+                        <th style="width:170px">Status</th>
+                        <th style="width:170px">Diperbarui</th>
+                        <th class="actions" style="width:150px">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in DaftarPerHal)
+                    {
+                        var id = b.UserId;
+                        var user = CariUser(id);
+                        <tr>
+                            <td class="grow">
+                                <span class="cell-strong">@(user?.NamaLengkap ?? user?.UserName ?? id)</span>
+                                <div class="muted-sm">@(user?.Email ?? "Pengguna tidak ditemukan")</div>
+                            </td>
+                            <td>@(user?.Kelas ?? "—")</td>
+                            <td>@b.JumlahKeluar dari @BatasKeluar kali</td>
+                            <td>
+                                @if (b.Diblokir)
+                                {
+                                    <span class="badge badge-merah">Diblokir</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-kuning">Peringatan</span>
+                                }
+                            </td>
+                            <td class="muted-sm">@(b.DiperbaruiPada == default ? "—" : b.DiperbaruiPada.ToString("dd MMM yyyy HH:mm"))</td>
+                            <td class="actions">
+                                <button class="icon-btn danger" title="Lepas blokir & hapus catatan"
+                                        @onclick="() => konfirmasiReset = id">
+                                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3 6h18" />
+                                        <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                                        <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                        <path d="M10 11v6M14 11v6" />
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (JumlahHal > 1)
+        {
+            <div class="paginasi">
+                <button class="btn btn-quiet btn-sm" disabled="@(HalTerkini <= 1)" @onclick="() => halaman--">←</button>
+                @for (var h = 1; h <= JumlahHal; h++)
+                {
+                    var hh = h;
+                    <button class='filter-chip @(hh == HalTerkini ? "on" : "")' @onclick="() => halaman = hh">@hh</button>
+                }
+                <button class="btn btn-quiet btn-sm" disabled="@(HalTerkini >= JumlahHal)" @onclick="() => halaman++">→</button>
+            </div>
+        }
+    </div>
+}
+
+@if (konfirmasiReset is not null)
+{
+    var idHapus = konfirmasiReset;
+    var target = CariUser(idHapus);
+    <div class="overlay-backdrop" @onclick="() => konfirmasiReset = null">
+        <div class="modal-card" @onclick:stopPropagation>
+            <span class="modal-icon">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    <path d="M10 11v6M14 11v6" />
+                </svg>
+            </span>
+            <h3>Hapus catatan peserta?</h3>
+            <p>
+                Catatan keluar <strong>@(target?.NamaLengkap ?? target?.UserName ?? idHapus)</strong>
+                akan dihapus dan blokirnya dilepas. Peserta mulai dari nol bila keluar lagi.
+            </p>
+            <div class="btn-row">
+                <button class="btn btn-ghost" @onclick="() => konfirmasiReset = null">Batal</button>
+                <button class="btn btn-danger" disabled="@(sedangReset is not null)"
+                        @onclick="() => ResetAsync(idHapus)">
+                    @(sedangReset == idHapus ? "Menghapus..." : "Ya, hapus")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Batas keluar ruang ujian sebelum peserta diblokir — sama dengan aturan di API.</summary>
+    private const int BatasKeluar = 3;
+
+    private List<BlokiranDto> daftar = new();
+    private readonly Dictionary<string, ApplicationUser?> pengguna = new();
+    private bool memuat = true;
+    private string? pesan;
+    private string? error;
+    private string? konfirmasiReset;
+    private string? sedangReset;
+
+    private int halaman = 1;
+    private const int UkuranHalaman = 10;
+
+    private int JumlahHal => Math.Max(1, (daftar.Count + UkuranHalaman - 1) / UkuranHalaman);
+
+    private int HalTerkini => Math.Clamp(halaman, 1, JumlahHal);
+
+    private List<BlokiranDto> DaftarPerHal =>
+        daftar.Skip((HalTerkini - 1) * UkuranHalaman).Take(UkuranHalaman).ToList();
+
+    protected override async Task OnInitializedAsync() => await MuatAsync();
+
+    private async Task MuatAsync()
+    {
+        memuat = true;
+        error = null;
+
+        var hasil = await Api.AmbilDaftarBlokiranAsync();
+
+        if (!hasil.Berhasil)
+        {
+            daftar = new();
+            error = hasil.Error;
+            memuat = false;
+            return;
+        }
+
+        daftar = hasil.Data!;
+        halaman = 1;
+        pengguna.Clear();
+
+        foreach (var b in daftar)
+            pengguna[b.UserId] = await Users.FindByIdAsync(b.UserId);
+
+        memuat = false;
+    }
+
+    private ApplicationUser? CariUser(string userId) =>
+        pengguna.TryGetValue(userId, out var user) ? user : null;
+
+    private async Task ResetAsync(string userId)
+    {
+        sedangReset = userId;
+        pesan = null;
+        error = null;
+
+        var hasil = await Api.ResetBlokiranAsync(userId);
+
+        sedangReset = null;
+        konfirmasiReset = null;
+
+        if (!hasil.Berhasil)
+        {
+            error = hasil.Error;
+            return;
+        }
+
+        pesan = "Catatan keluar peserta berhasil dihapus.";
+        await MuatAsync();
+    }
+}

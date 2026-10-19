@@ -1,0 +1,183 @@
+@page "/kerjakan-ujian/{PengerjaanId:int}/preview"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Pratinjau Jawaban · USMK</PageTitle>
+
+@if (memuat)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="skeleton-stack">
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:180px"></div>
+        </div>
+    </div>
+}
+else if (data is null)
+{
+    <div class="alert alert-danger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+        </svg>
+        @(loadError ?? "Pratinjau tidak ditemukan.")
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <a class="muted-sm" href="kerjakan-ujian">← Kerjakan ujian</a>
+            <h1 class="mt-1">Pratinjau Jawaban</h1>
+            <p class="text-muted">
+                <span class="cell-strong">@data.Judul</span>
+                @if (!string.IsNullOrWhiteSpace(data.MataPelajaran))
+                {
+                    <span class="badge badge-biru">@data.MataPelajaran</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(data.Kelas))
+                {
+                    <span class="badge badge-ungu">@data.Kelas</span>
+                }
+            </p>
+        </div>
+        <div class="btn-row">
+            @if (data.Status is "Selesai" or "WaktuHabis")
+            {
+                if (data.Status == "Selesai")
+                {
+                    <span class="badge badge-hijau"><span class="dot-status"></span> Selesai</span>
+                }
+                else
+                {
+                    <span class="badge badge-merah">Waktu habis</span>
+                }
+            }
+            else
+            {
+                <span class="badge badge-kuning">Sedang mengerjakan</span>
+                <a class="btn btn-primary btn-sm" href="@($"kerjakan-ujian/{PengerjaanId}")">Lanjutkan</a>
+            }
+        </div>
+    </div>
+
+    @if (pesan is not null)
+    {
+        <div class="alert alert-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            @pesan
+        </div>
+    }
+
+    @if (data.Skor is not null)
+    {
+        <div class="hasil-hero" style="max-width:100%;margin-bottom:16px">
+            <span class="stat-label">SKOR AKHIR</span>
+            <div class="skor">@data.Skor.Value.ToString("0.0")</div>
+            <p class="text-muted" style="margin:0">
+                @(data.Status == "Selesai" ? "Ujian selesai dan nilai otomatis dihitung."
+                    : "Waktu pengerjaan habis, jawaban dikumpulkan otomatis.")
+                Essay yang belum dinilai pengawas belum ikut dalam skor ini.
+            </p>
+        </div>
+    }
+
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-body-pad">
+            <div class="skor-keterangan" style="justify-content:flex-start;gap:22px;flex-wrap:wrap;margin:0">
+                <span>Nama <b>@(string.IsNullOrWhiteSpace(data.NamaSiswa) ? "-" : data.NamaSiswa)</b></span>
+                <span>Dijawab <b>@TotalDijawab / @TotalSoal</b></span>
+                <span>Mulai <b>@data.WaktuMulai.ToString("dd MMM yyyy HH:mm")</b></span>
+                @if (data.WaktuSelesai is not null)
+                {
+                    <span>Selesai <b>@data.WaktuSelesai.Value.ToString("dd MMM yyyy HH:mm")</b></span>
+                }
+            </div>
+        </div>
+    </div>
+
+    @foreach (var bagian in data.Bagians)
+    {
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-head">
+                <div class="grow">
+                    <span class="muted-sm">Bagian @bagian.Urutan</span>
+                    <h2 style="margin:2px 0 0">@bagian.Judul</h2>
+                </div>
+                <span class="badge badge-biru">@bagian.Soals.Count soal</span>
+            </div>
+
+            <div class="card-body-pad">
+                @foreach (var s in bagian.Soals)
+                {
+                    <div class="soal-card" style="margin-bottom:16px">
+                        <div style="display:flex;gap:10px;align-items:flex-start">
+                            <span class="badge badge-abu">@s.Urutan</span>
+                            <div style="flex:1;min-width:0">
+                                <p style="margin:0 0 8px;font-weight:600">@s.Teks</p>
+                                @if (s.Dijawab)
+                                {
+                                    <div class="alert alert-success" style="margin:0">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M20 6L9 17l-5-5" />
+                                        </svg>
+                                        <span style="white-space:pre-wrap">@s.Jawaban</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-warning" style="margin:0">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="9" />
+                                            <path d="M12 8v5M12 16h.01" />
+                                        </svg>
+                                        Belum dijawab
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int PengerjaanId { get; set; }
+
+    private PreviewPengerjaanDto? data;
+    private bool memuat = true;
+    private string? loadError;
+    private string? pesan;
+
+    private int TotalSoal => data?.Bagians.Sum(b => b.Soals.Count) ?? 0;
+    private int TotalDijawab => data?.Bagians.Sum(b => b.Soals.Count(s => s.Dijawab)) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        pesan = UrlQuery.Baca(Nav.Uri, "pesan");
+
+        var hasil = await Api.AmbilPreviewKerjaAsync(PengerjaanId);
+        memuat = false;
+
+        if (hasil.Berhasil)
+        {
+            data = hasil.Data;
+            loadError = null;
+        }
+        else
+        {
+            data = null;
+            loadError = hasil.Error;
+        }
+    }
+}

@@ -1,0 +1,147 @@
+﻿@rendermode InteractiveServer
+@implements IDisposable
+@inject NavigationManager Nav
+
+<aside class="sidebar">
+    <a class="brand" href="/">
+        <span class="brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+            </svg>
+        </span>
+        <span>
+            <span class="brand-title">USMK</span>
+            <span class="brand-sub">Ujian Online</span>
+        </span>
+    </a>
+
+    <div class="menu-label">Menu</div>
+
+    <nav class="side-nav" aria-label="Menu utama">
+        <a class="side-item @(Aktif("/", "/home"))" href="/">
+            <span class="side-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 10.5L12 3l9 7.5" />
+                    <path d="M5 9.5V21h14V9.5" />
+                    <path d="M9.5 21v-6h5v6" />
+                </svg>
+            </span>
+            <span class="side-text">
+                <span class="side-label">Beranda</span>
+                <span class="side-desc">Ringkasan dan pintasan</span>
+            </span>
+        </a>
+
+        <div class="menu-label">Ujian SMK</div>
+
+        <AuthorizeView Roles="@DbSeeder.AdminRole">
+            <Authorized>
+                <a class="side-item @(Aktif("/paket-ujian"))" href="paket-ujian">
+                    <span class="side-ico">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                            <path d="M14 3v6h6" />
+                            <path d="M8 13h8M8 17h5" />
+                        </svg>
+                    </span>
+                    <span class="side-text">
+                        <span class="side-label">Paket Ujian</span>
+                        <span class="side-desc">Susun bagian dan soal ujian</span>
+                    </span>
+                </a>
+            </Authorized>
+        </AuthorizeView>
+
+        <a class="side-item @(Aktif("/kerjakan-ujian"))" href="kerjakan-ujian">
+            <span class="side-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+            </span>
+            <span class="side-text">
+                <span class="side-label">Kerjakan Ujian</span>
+                <span class="side-desc">Isi jawaban paket ujian</span>
+            </span>
+        </a>
+
+        <div class="menu-label">Laporan</div>
+
+        <AuthorizeView Roles="@DbSeeder.AdminRole">
+            <Authorized>
+                <a class="side-item @(Aktif("/rekap"))" href="rekap">
+                    <span class="side-ico">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+                        </svg>
+                    </span>
+                    <span class="side-text">
+                        <span class="side-label">Rekap Nilai</span>
+                        <span class="side-desc">Lihat hasil peserta</span>
+                    </span>
+                </a>
+
+                <a class="side-item @(Aktif("/blokir-peserta"))" href="blokir-peserta">
+                    <span class="side-ico">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" />
+                            <path d="M7 11V7a5 5 0 0110 0v4" />
+                        </svg>
+                    </span>
+                    <span class="side-text">
+                        <span class="side-label">Blokir Peserta</span>
+                        <span class="side-desc">Reset peserta yang diblokir</span>
+                    </span>
+                </a>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+
+    <div class="sidebar-foot">
+        <div>USMK · Sistem Ujian Online</div>
+        <div>@TahunSekarang</div>
+    </div>
+</aside>
+
+@code {
+    private static int TahunSekarang => DateTime.Now.Year;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private bool Aktif(params string[] prefixes)
+    {
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+
+        foreach (var p in prefixes)
+        {
+            if (p == "/" || p == "/home")
+            {
+                if (path is "/" or "/home" or "/home/")
+                    return true;
+            }
+            else if (path.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

@@ -1,0 +1,106 @@
+@page "/register"
+@attribute [AllowAnonymous]
+
+<PageTitle>Daftar · USMK</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-aside">
+        <a class="brand-lockup" href="/">
+            <span class="brand-mark">U</span>
+            <span>
+                <span class="brand-name">USMK</span>
+                <span class="brand-tag">Ujian Online</span>
+            </span>
+        </a>
+
+        <h1 class="auth-aside-title">Gabung sekali, ujian jadi gampang.</h1>
+        <p class="auth-aside-text">
+            Daftar sebagai peserta, lalu langsung mulai ujian yang sedang dibuka
+            oleh gurumu.
+        </p>
+
+        <ul class="auth-points">
+            <li>Cukup nama, NIS, dan kelas</li>
+            <li>Langsung terhubung ke akun sekolah</li>
+            <li>Bisa melanjutkan ujian yang belum selesai</li>
+        </ul>
+    </div>
+
+    <div class="auth-panel">
+        <div class="auth-card">
+            <h2 class="auth-title">Daftar sebagai peserta</h2>
+            <p class="auth-sub">Akun ini dipakai untuk masuk dan mengerjakan ujian.</p>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 8v5M12 16h.01" />
+                    </svg>
+                    <span>@Error</span>
+                </div>
+            }
+
+            <form method="post" action="/account/register">
+                <AntiforgeryToken />
+
+                @if (!string.IsNullOrEmpty(ReturnUrl))
+                {
+                    <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+                }
+
+                <div class="field">
+                    <label class="label" for="nama">Nama lengkap</label>
+                    <input id="nama" name="NamaLengkap" class="input" required maxlength="120"
+                           placeholder="Nama lengkap kamu" />
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label class="label" for="nis">NIS</label>
+                        <input id="nis" name="Nis" class="input" required maxlength="40" placeholder="12345" />
+                        <p class="hint">NIS harus sama seperti data sekolah.</p>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="kelas">Kelas</label>
+                        <input id="kelas" name="Kelas" class="input" maxlength="60" placeholder="XII RPL 1" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="email">Email</label>
+                    <input id="email" name="Email" class="input" type="email" required
+                           autocomplete="username" placeholder="nama@sekolah.sch.id" />
+                </div>
+
+                <div class="field">
+                    <label class="label" for="password">Password</label>
+                    <input id="password" name="Password" class="input" type="password" required
+                           minlength="8" autocomplete="new-password"
+                           placeholder="Minimal 8 karakter, ada huruf besar dan angka" />
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg">Daftar sekarang</button>
+            </form>
+
+            <p class="auth-alt">
+                Sudah punya akun?
+                <a href="@LinkMasuk">Masuk di sini</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "redirect")]
+    private string? ReturnUrl { get; set; }
+
+    private string LinkMasuk => string.IsNullOrWhiteSpace(ReturnUrl)
+        ? "login"
+        : $"login?redirect={Uri.EscapeDataString(ReturnUrl)}";
+}

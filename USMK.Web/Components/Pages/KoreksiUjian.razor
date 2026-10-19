@@ -1,0 +1,279 @@
+@page "/koreksi/{PengerjaanId:int}"
+@attribute [Authorize(Roles = DbSeeder.AdminRole)]
+@rendermode InteractiveServer
+@inject UsmkApi Api
+@inject NavigationManager Nav
+
+<PageTitle>Koreksi Ujian · USMK</PageTitle>
+
+@if (memuat)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="skeleton-stack">
+            <div class="skeleton" style="height:60px"></div>
+            <div class="skeleton" style="height:220px"></div>
+        </div>
+    </div>
+}
+else if (data is null)
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @(loadError ?? "Pengerjaan tidak ditemukan.")
+        </div>
+    </div>
+}
+else if (data.Status is not ("Selesai" or "WaktuHabis"))
+{
+    <div class="card card-narrow" style="margin:0 auto">
+        <div class="empty">
+            <span class="icon-bubble icon-bubble-lg icon-bubble-kuning">!</span>
+            <h3>Belum bisa dikoreksi</h3>
+            <p>Pengerjaan ini masih berjalan. Koreksi baru bisa dilakukan setelah dikumpulkan.</p>
+            <a class="btn btn-primary" href="@($"kerjakan-ujian/{PengerjaanId}")">Lanjutkan pengerjaan</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <a class="muted-sm" href="rekap">← Kembali ke rekap</a>
+            <h1 class="mt-1">Koreksi Ujian</h1>
+            <p class="text-muted">
+                <span class="cell-strong">@data.Judul</span>
+                @if (!string.IsNullOrWhiteSpace(data.NamaSiswa))
+                {
+                    <span class="cell-strong">· @data.NamaSiswa</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(data.Kelas))
+                {
+                    <span class="badge badge-ungu">@data.Kelas</span>
+                }
+            </p>
+        </div>
+        <div>
+            <span class="stat-label">SKOR SAAT INI</span>
+            <div class="stat-value">@(data.Skor?.ToString("0.0") ?? "—")</div>
+        </div>
+    </div>
+
+    @if (pesan is not null)
+    {
+        <div class="alert alert-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            @pesan
+        </div>
+    }
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
+            @error
+        </div>
+    }
+
+    @if (JumlahEssay == 0)
+    {
+        <div class="card">
+            <div class="empty">
+                <span class="icon-bubble icon-bubble-lg icon-bubble-ungu">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        <path d="M9 15l3 3" />
+                    </svg>
+                </span>
+                <h3>Tidak ada soal essay</h3>
+                <p>Ujian ini sudah dinilai otomatis penuh — semua soal punya kunci otomatis sehingga tidak ada yang perlu dikoreksi manual.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 16v-5M12 8h.01" />
+            </svg>
+            Koreksi <strong>@JumlahEssay</strong> soal essay di bawah ini. Setiap kali disimpan, skor akhir langsung
+            dihitung ulang dan bertambah ke jawaban yang benar otomatis.
+        </div>
+
+        @foreach (var bagian in data.Bagians)
+        {
+            var essay = bagian.Soals.Where(s => s.Jenis == JenisSoal.TeksPanjang).ToList();
+
+            @if (essay.Count > 0)
+            {
+                <div class="card" style="margin-bottom:16px">
+                    <div class="card-head">
+                        <div class="grow">
+                            <span class="muted-sm">Bagian @bagian.Urutan</span>
+                            <h2 style="margin:2px 0 0">@bagian.Judul</h2>
+                        </div>
+                        <span class="badge badge-biru">@essay.Count essay</span>
+                    </div>
+
+                    <div class="card-body-pad">
+                        @foreach (var s in essay)
+                        {
+                            var soalId = s.ButirSoalId;
+                            <div class="soal-card" style="margin-bottom:18px">
+                                <p style="margin:0 0 6px;font-weight:600">@s.Teks</p>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                                    <span class="badge badge-abu">Bobot @s.Bobot.ToString("0.##")</span>
+                                    @if (s.Dijawab)
+                                    {
+                                        <span class="badge badge-hijau">Dijawab</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-merah">Tidak dijawab</span>
+                                    }
+                                    @if (s.NilaiManual is not null)
+                                    {
+                                        <span class="badge badge-biru">Nilai @s.NilaiManual.Value.ToString("0.##")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-kuning">Belum dinilai</span>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(s.Kunci))
+                                {
+                                    <div class="alert alert-info" style="margin:0 0 10px">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                             stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M15 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                            <path d="M6 21v-2a4 4 0 014-4h1" />
+                                        </svg>
+                                        <span>Panduan: @s.Kunci</span>
+                                    </div>
+                                }
+
+                                <div class="alert alert-success" style="margin:0 0 12px">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                         stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                    <span style="white-space:pre-wrap">@(string.IsNullOrWhiteSpace(s.Jawaban) ? "(siswa tidak menjawab)" : s.Jawaban)</span>
+                                </div>
+
+                                <div class="field-row" style="align-items:end">
+                                    <div class="field" style="flex:1;max-width:260px">
+                                        <label class="label" for="nilai-@soalId">Nilai manual (0 – @s.Bobot)</label>
+                                        <input id="nilai-@soalId" class="input" type="number" min="0" step="0.5"
+                                               value="@nilai[soalId]"
+                                               @onchange="e => SetNilai(soalId, e.Value?.ToString())" />
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" disabled="@sedangSimpan"
+                                            @onclick="() => SimpanKoreksiAsync(s)">
+                                        @(sedangSimpan ? "Menyimpan..." : "Simpan Nilai")
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    [Parameter] public int PengerjaanId { get; set; }
+
+    private KoreksiPengerjaanDto? data;
+    private readonly Dictionary<int, decimal> nilai = new();
+    private bool memuat = true;
+    private bool sedangSimpan;
+    private string? loadError;
+    private string? error;
+    private string? pesan;
+
+    private int JumlahEssay =>
+        data?.Bagians.Sum(b => b.Soals.Count(s => s.Jenis == JenisSoal.TeksPanjang)) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MuatAsync();
+    }
+
+    private async Task MuatAsync()
+    {
+        memuat = true;
+        error = null;
+        var hasil = await Api.AmbilKoreksiAsync(PengerjaanId);
+        memuat = false;
+
+        if (!hasil.Berhasil || hasil.Data is null)
+        {
+            data = null;
+            loadError = hasil.Error;
+            return;
+        }
+
+        data = hasil.Data;
+        nilai.Clear();
+
+        foreach (var s in data.Bagians.SelectMany(b => b.Soals))
+        {
+            var v = s.NilaiManual ?? 0;
+            nilai[s.ButirSoalId] = v;
+        }
+    }
+
+    private void SetNilai(int soalId, string? teks)
+    {
+        nilai[soalId] = decimal.TryParse(teks, out var v) ? Math.Max(0, v) : 0;
+        error = null;
+    }
+
+    private async Task SimpanKoreksiAsync(SoalKoreksiDto soal)
+    {
+        if (sedangSimpan || data is null)
+            return;
+
+        var n = nilai[soal.ButirSoalId];
+        if (n > soal.Bobot)
+        {
+            error = $"Nilai tidak boleh melebihi bobot soal ({soal.Bobot.ToString("0.##")}).";
+            return;
+        }
+
+        sedangSimpan = true;
+        error = null;
+        pesan = null;
+
+        var hasil = await Api.SimpanKoreksiAsync(
+            PengerjaanId, new KoreksiRequest(soal.ButirSoalId, n));
+
+        sedangSimpan = false;
+
+        if (hasil.Berhasil)
+        {
+            pesan = "Nilai essay disimpan dan skor diperbarui.";
+            await MuatAsync();
+        }
+        else
+        {
+            error = hasil.Error;
+        }
+    }
+}
